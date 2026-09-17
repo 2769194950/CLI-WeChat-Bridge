@@ -84,6 +84,33 @@ describe("XiaTong inbound Router hook", () => {
     }
   });
 
+  test("acknowledges a queued forward without direct agent delivery", async () => {
+    const endpointPath = createEndpoint();
+    const result = await routeInboundThroughXiatong(message, {
+      endpointPath,
+      request: async () => ({
+        ok: true,
+        response: {
+          action: "forward",
+          reply: "queued A1B2",
+          reason: "queued",
+          target: {
+            sessionShortId: "A1B2",
+            adapter: "claude",
+            cwd: "E:\\XiaTong",
+            runtimeSessionId: "runtime-a",
+          },
+        },
+      }),
+    });
+
+    expect(result).toEqual({
+      kind: "handled",
+      reply: "queued A1B2",
+      reason: "queued",
+    });
+  });
+
   test("handles command responses without forwarding", async () => {
     const endpointPath = createEndpoint();
     const result = await routeInboundThroughXiatong(message, {

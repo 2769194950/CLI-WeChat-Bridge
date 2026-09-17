@@ -71,6 +71,15 @@ export async function routeInboundThroughXiatong(
     }
     const decision = frame.response;
     if (decision.action === "forward") {
+      if (decision.reason === "queued") {
+        return {
+          kind: "handled",
+          reply:
+            decision.reply?.trim() ||
+            "[遐通]\n状态：queued\n内容：任务已进入隔离队列。",
+          reason: decision.reason,
+        };
+      }
       return { kind: "forward", decision };
     }
     if (

@@ -164,6 +164,7 @@ import {
   type DaemonSlotSummary,
   type DaemonStatus,
 } from "./daemon-link.ts";
+import { createRuntimeSession } from "./runtime-session-control.ts";
 
 type DaemonCliOptions = {
   cwd: string;
@@ -1052,6 +1053,9 @@ export class WechatDaemon {
           companionPid: endpoint?.companionPid,
           pendingApproval: slot.pendingConfirmations.length > 0,
           pendingUserInput: Boolean(slot.pendingUserInput),
+          activeRuntimeSessionId:
+            slot.runtime.getState().activeRuntimeSessionId ??
+            slot.runtime.getState().sharedSessionId,
         };
       }),
     };
@@ -1335,7 +1339,102 @@ export class WechatDaemon {
         return await this.handleDaemonSendText(request);
       case "forward_input":
         return await this.handleDaemonForwardInput(request);
+      case "create_runtime_session":
+        return await this.handleCreateRuntimeSession(request);
+      case "runtime_status":
+        return this.handleRuntimeStatus(request);
     }
+  }
+
+  private async handleCreateRuntimeSession(
+    request: Extract<DaemonRequest, { command: "create_runtime_session" }>,
+  ): Promise<{
+    created: true;
+    requestId: string;
+    adapter: DaemonAdapterKind;
+    runtimeSessionId: string;
+    previousRuntimeSessionId?: string;
+  }> {
+    if (!request.requestId.trim()) {
+      throw new Error("create_runtime_session requires a non-empty requestId.");
+    }
+    if (!isSameWorkspaceCwd(request.cwd, this.cwd)) {
+      throw new Error(
+        `${this.channelId}-daemon is bound to ${this.cwd}; requested cwd was ${request.cwd}.`,
+      );
+    }
+
+    let slot = this.slots.get(request.adapter);
+    if (!slot) {
+      const ensureResult = await this.ensureSlot(request.adapter, {
+        openVisible: true,
+        reuseExistingVisible: true,
+      });
+      if (!ensureResult.activated) {
+        throw new Error(
+          `Could not activate ${request.adapter} before creating a runtime session.`,
+        );
+      }
+      slot = this.slots.get(request.adapter);
+    }
+    if (!slot) {
+      throw new Error(`No ${request.adapter} adapter slot is available.`);
+    }
+    if (
+      slot.turns.hasActiveTask ||
+      slot.pendingConfirmations.length > 0 ||
+      slot.pendingUserInput
+    ) {
+      throw new Error(
+        `${request.adapter} cannot create a session while a task or interaction is pending.`,
+      );
+    }
+
+    const result = await createRuntimeSession(slot.runtime, request.adapter);
+    return {
+      created: true,
+      requestId: request.requestId,
+      ...result,
+    };
+  }
+
+  private handleRuntimeStatus(
+    request: Extract<DaemonRequest, { command: "runtime_status" }>,
+  ): {
+    adapter?: DaemonAdapterKind;
+    status: string;
+    activeRuntimeSessionId?: string;
+    pendingApproval: boolean;
+    pendingUserInput: boolean;
+  } {
+    if (request.cwd && !isSameWorkspaceCwd(request.cwd, this.cwd)) {
+      throw new Error(
+        `${this.channelId}-daemon is bound to ${this.cwd}; requested cwd was ${request.cwd}.`,
+      );
+    }
+    const slot = request.adapter
+      ? this.slots.get(request.adapter)
+      : this.getActiveSlot();
+    if (!slot) {
+      return {
+        status: "stopped",
+        pendingApproval: false,
+        pendingUserInput: false,
+      };
+    }
+    const state = slot.runtime.getState();
+    return {
+      adapter: slot.adapter,
+      status: state.status,
+      ...(state.activeRuntimeSessionId || state.sharedSessionId
+        ? {
+            activeRuntimeSessionId:
+              state.activeRuntimeSessionId ?? state.sharedSessionId,
+          }
+        : {}),
+      pendingApproval: slot.pendingConfirmations.length > 0,
+      pendingUserInput: Boolean(slot.pendingUserInput),
+    };
   }
 
   async handleDaemonSendText(

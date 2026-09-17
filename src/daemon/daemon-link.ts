@@ -30,6 +30,7 @@ export type DaemonSlotSummary = {
   companionPid?: number;
   pendingApproval: boolean;
   pendingUserInput: boolean;
+  activeRuntimeSessionId?: string;
 };
 
 export type DaemonStatus = {
@@ -100,6 +101,17 @@ export type DaemonRequest =
       recipientId?: string;
       contextToken?: string;
       metadata?: Record<string, string>;
+    }
+  | {
+      command: "create_runtime_session";
+      requestId: string;
+      adapter: DaemonAdapterKind;
+      cwd: string;
+    }
+  | {
+      command: "runtime_status";
+      adapter?: DaemonAdapterKind;
+      cwd?: string;
     }
   | { command: "status" }
   | { command: "shutdown" };

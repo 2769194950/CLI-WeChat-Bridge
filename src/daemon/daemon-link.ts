@@ -49,6 +49,8 @@ export type DaemonSendTextResult = {
 
 export type DaemonForwardInputResult = {
   forwarded: boolean;
+  requestId?: string;
+  activeRuntimeSessionId?: string;
   queued?: boolean;
   queuePosition?: number;
   adapter: DaemonAdapterKind;
@@ -93,6 +95,8 @@ export type DaemonRequest =
     }
   | {
       command: "forward_input";
+      requestId?: string;
+      runtimeSessionId?: string;
       adapter?: DaemonAdapterKind;
       cwd?: string;
       text: string;

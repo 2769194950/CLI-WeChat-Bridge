@@ -164,7 +164,11 @@ import {
   type DaemonSlotSummary,
   type DaemonStatus,
 } from "./daemon-link.ts";
-import { createRuntimeSession } from "./runtime-session-control.ts";
+import {
+  createRuntimeSession,
+  ensureTargetRuntimeSession,
+  SerialIdempotentDispatcher,
+} from "./runtime-session-control.ts";
 
 type DaemonCliOptions = {
   cwd: string;
@@ -916,6 +920,7 @@ export class WechatDaemon {
   private readonly slots = new Map<DaemonAdapterKind, DaemonSlot>();
   // Per-adapter serialization chains for ensureSlot (see ensureSlot comment).
   private readonly slotEnsureChains = new Map<DaemonAdapterKind, Promise<unknown>>();
+  private readonly forwardDispatcher = new SerialIdempotentDispatcher();
   private readonly startedAt = new Date().toISOString();
   private readonly bridgeStartedAtMs = Date.now();
   private backlogNoticeSent = false;
@@ -1509,6 +1514,12 @@ export class WechatDaemon {
     if (!adapter) {
       throw new Error("No active adapter slot is available.");
     }
+    const targeted = request.requestId !== undefined || request.runtimeSessionId !== undefined;
+    if (targeted && (!request.requestId?.trim() || !request.runtimeSessionId?.trim())) {
+      throw new Error(
+        "Targeted forward_input requires non-empty requestId and runtimeSessionId.",
+      );
+    }
     const senderId = request.senderId ?? this.authorizedUserId;
     const conversationId = request.conversationId ?? senderId;
     const conversation: ChannelConversationRef = {
@@ -1550,12 +1561,40 @@ export class WechatDaemon {
     };
 
     try {
-      const routed = await this.serializeSlotInput(slot, () =>
-        this.inboundConversationContext.run(conversation, () =>
-          this.routeDaemonInput(slot, inboundMessage, conversation),
-        ));
+      const run = () => this.serializeSlotInput(slot, async () => {
+        let activeRuntimeSessionId: string | undefined;
+        if (request.runtimeSessionId) {
+          if (
+            slot.turns.hasActiveTask ||
+            slot.pendingConfirmations.length > 0 ||
+            slot.pendingUserInput
+          ) {
+            throw new Error(
+              `${slot.adapter} cannot route targeted input while a task or interaction is pending.`,
+            );
+          }
+          activeRuntimeSessionId = await ensureTargetRuntimeSession(
+            slot.runtime,
+            request.runtimeSessionId,
+          );
+        }
+        const routed = await this.inboundConversationContext.run(
+          conversation,
+          () => this.routeDaemonInput(slot, inboundMessage, conversation),
+        );
+        return { routed, activeRuntimeSessionId };
+      });
+      const { routed, activeRuntimeSessionId } = request.requestId
+        ? await this.forwardDispatcher.dispatch(adapter, request.requestId, run)
+        : await run();
       if (routed.kind === "dispatched") {
-        return { forwarded: true, adapter, conversationId };
+        return {
+          forwarded: true,
+          ...(request.requestId ? { requestId: request.requestId } : {}),
+          ...(activeRuntimeSessionId ? { activeRuntimeSessionId } : {}),
+          adapter,
+          conversationId,
+        };
       }
       this.restoreActiveAdapterAfterRejectedInput(
         adapter,
@@ -1564,6 +1603,8 @@ export class WechatDaemon {
       );
       return {
         forwarded: false,
+        ...(request.requestId ? { requestId: request.requestId } : {}),
+        ...(activeRuntimeSessionId ? { activeRuntimeSessionId } : {}),
         ...(routed.queued ? { queued: true } : {}),
         ...(routed.queuePosition !== undefined ? { queuePosition: routed.queuePosition } : {}),
         adapter,
@@ -2254,9 +2295,9 @@ export class WechatDaemon {
       return;
     }
 
-    const xiatongResult = await routeInboundThroughXiatong(
-      channelMessage ?? toChannelInboundMessage(message),
-    );
+    const normalizedChannelMessage =
+      channelMessage ?? toChannelInboundMessage(message);
+    const xiatongResult = await routeInboundThroughXiatong(normalizedChannelMessage);
     if (xiatongResult.kind === "handled") {
       appendDaemonLog(
         `xiantong_route: action=handled reason=${truncatePreview(xiatongResult.reason, 120)}`,
@@ -2268,6 +2309,32 @@ export class WechatDaemon {
       appendDaemonLog(
         `xiantong_route: action=forward reason=${truncatePreview(xiatongResult.decision.reason ?? "forward", 120)}`,
       );
+      const target = xiatongResult.decision.target;
+      if (target?.runtimeSessionId) {
+        try {
+          await this.handleDaemonForwardInput({
+            command: "forward_input",
+            requestId: normalizedChannelMessage.id,
+            runtimeSessionId: target.runtimeSessionId,
+            adapter: target.adapter as DaemonAdapterKind,
+            cwd: target.cwd,
+            text: message.text,
+            senderId: message.senderId,
+            conversationId: normalizedChannelMessage.conversation.conversationId,
+            recipientId: normalizedChannelMessage.conversation.recipientId,
+            contextToken: normalizedChannelMessage.conversation.opaqueRef,
+            metadata: normalizedChannelMessage.conversation.metadata,
+          });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          await this.queueWechatMessage(
+            message.senderId,
+            `[遐通]\n状态：failed\n内容：目标会话转发失败：${detail}`,
+            "notice",
+          );
+        }
+        return;
+      }
     }
 
     const emojiMatch = resolveEmojiCommand(message.text);

@@ -12,8 +12,71 @@ type RuntimeSessionCreationOptions = {
   pollIntervalMs?: number;
 };
 
+export class SerialIdempotentDispatcher {
+  private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly completed = new Map<string, unknown>();
+
+  async dispatch<T>(
+    key: string,
+    requestId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    if (this.completed.has(requestId)) {
+      return this.completed.get(requestId) as T;
+    }
+
+    const run = async (): Promise<T> => {
+      if (this.completed.has(requestId)) {
+        return this.completed.get(requestId) as T;
+      }
+      const result = await action();
+      this.completed.set(requestId, result);
+      return result;
+    };
+    const tail = this.chains.get(key) ?? Promise.resolve();
+    const queued = tail.then(run, run);
+    this.chains.set(
+      key,
+      queued.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return await queued;
+  }
+}
+
 function getRuntimeSessionId(state: BridgeAdapterState): string | undefined {
   return state.activeRuntimeSessionId ?? state.sharedSessionId;
+}
+
+export async function ensureTargetRuntimeSession(
+  runtime: BridgeAdapter,
+  targetRuntimeSessionId: string,
+): Promise<string> {
+  const target = targetRuntimeSessionId.trim();
+  if (!target) {
+    throw new Error("runtimeSessionId must be non-empty.");
+  }
+
+  const initialState = runtime.getState();
+  if (initialState.status !== "idle") {
+    throw new Error(
+      `Runtime must be idle before targeted routing; current status is ${initialState.status}.`,
+    );
+  }
+
+  if (getRuntimeSessionId(initialState) !== target) {
+    await runtime.resumeSession(target);
+  }
+
+  const actual = getRuntimeSessionId(runtime.getState());
+  if (actual !== target) {
+    throw new Error(
+      `Runtime session mismatch after resume; expected ${target}, active ${actual ?? "none"}.`,
+    );
+  }
+  return actual;
 }
 
 function delay(ms: number): Promise<void> {

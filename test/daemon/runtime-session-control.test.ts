@@ -4,7 +4,11 @@ import type {
   BridgeAdapter,
   BridgeAdapterState,
 } from "../../src/bridge/bridge-types.ts";
-import { createRuntimeSession } from "../../src/daemon/runtime-session-control.ts";
+import {
+  createRuntimeSession,
+  ensureTargetRuntimeSession,
+  SerialIdempotentDispatcher,
+} from "../../src/daemon/runtime-session-control.ts";
 
 function fakeRuntime(
   initial: Partial<BridgeAdapterState>,
@@ -77,5 +81,78 @@ describe("createRuntimeSession", () => {
     await expect(createRuntimeSession(runtime, "codex")).rejects.toThrow(
       "supports Claude only",
     );
+  });
+});
+
+describe("ensureTargetRuntimeSession", () => {
+  test("keeps the matching session and resumes a different target", async () => {
+    let resumeCount = 0;
+    const matching = fakeRuntime(
+      { sharedSessionId: "session-a" },
+      () => undefined,
+    );
+    matching.resumeSession = async () => { resumeCount += 1; };
+    await expect(
+      ensureTargetRuntimeSession(matching, "session-a"),
+    ).resolves.toBe("session-a");
+    expect(resumeCount).toBe(0);
+
+    const switching = fakeRuntime(
+      { sharedSessionId: "session-a" },
+      () => undefined,
+    );
+    switching.resumeSession = async (sessionId) => {
+      switching.getState().sharedSessionId = sessionId;
+      switching.getState().activeRuntimeSessionId = sessionId;
+    };
+    await expect(
+      ensureTargetRuntimeSession(switching, "session-b"),
+    ).resolves.toBe("session-b");
+  });
+
+  test("rejects busy and mismatched resume results", async () => {
+    const busy = fakeRuntime({ status: "busy" }, () => undefined);
+    await expect(
+      ensureTargetRuntimeSession(busy, "session-b"),
+    ).rejects.toThrow("must be idle");
+
+    const mismatch = fakeRuntime(
+      { sharedSessionId: "session-a" },
+      () => undefined,
+    );
+    await expect(
+      ensureTargetRuntimeSession(mismatch, "session-b"),
+    ).rejects.toThrow("mismatch after resume");
+  });
+});
+
+describe("SerialIdempotentDispatcher", () => {
+  test("runs duplicate request ids once and serializes one adapter", async () => {
+    const dispatcher = new SerialIdempotentDispatcher();
+    const order: string[] = [];
+    let duplicateRuns = 0;
+    const first = dispatcher.dispatch("claude", "request-1", async () => {
+      duplicateRuns += 1;
+      order.push("first-start");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push("first-end");
+      return "first";
+    });
+    const duplicate = dispatcher.dispatch("claude", "request-1", async () => {
+      duplicateRuns += 1;
+      return "duplicate";
+    });
+    const second = dispatcher.dispatch("claude", "request-2", async () => {
+      order.push("second");
+      return "second";
+    });
+
+    await expect(Promise.all([first, duplicate, second])).resolves.toEqual([
+      "first",
+      "first",
+      "second",
+    ]);
+    expect(duplicateRuns).toBe(1);
+    expect(order).toEqual(["first-start", "first-end", "second"]);
   });
 });

@@ -1688,6 +1688,14 @@ async function handleInboundMessage(params: {
     stateStore.appendLog(
       `xiantong_route: action=forward reason=${truncatePreview(xiatongResult.decision.reason ?? "forward", 120)}`,
     );
+    if (xiatongResult.decision.target?.runtimeSessionId) {
+      await queueWechatMessage(
+        message.senderId,
+        "[遐通]\n状态：failed\n内容：目标会话路由需要 wechat-daemon 模式，当前消息未发送。",
+        "notice",
+      );
+      return null;
+    }
   }
 
   const systemCommand = parseWechatControlCommand(message.text, {

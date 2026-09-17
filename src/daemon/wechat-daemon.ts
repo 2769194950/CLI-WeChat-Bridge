@@ -121,6 +121,7 @@ import {
 } from "../core/bridge-defer.ts";
 import { InboundConversationContext } from "../core/conversation-routing.ts";
 import { TurnCoordinator, type TurnDispatchResult } from "../core/turn-coordinator.ts";
+import { routeInboundThroughXiatong } from "../core/xiantong-router-hook.ts";
 import { handleAdapterControl, invalidateModelSnapshot } from "../bridge/adapter-control.ts";
 import { forwardBridgeEvent } from "../core/bridge-event-forwarder.ts";
 import { isDirectModuleRun } from "../core/direct-run.ts";
@@ -1083,6 +1084,7 @@ export class WechatDaemon {
               }
               await this.handleInboundMessage(
                 toLegacyInboundWechatMessage(channelMessage),
+                channelMessage,
               );
             },
           );
@@ -2139,7 +2141,10 @@ export class WechatDaemon {
     slot.turns.observeConversation(conversation);
   }
 
-  private async handleInboundMessage(message: InboundWechatMessage): Promise<void> {
+  private async handleInboundMessage(
+    message: InboundWechatMessage,
+    channelMessage?: ChannelInboundMessage,
+  ): Promise<void> {
     if (message.senderId !== this.authorizedUserId) {
       await this.queueWechatMessage(
         message.senderId,
@@ -2148,6 +2153,22 @@ export class WechatDaemon {
           : "Unauthorized. This daemon only accepts messages from the configured WeChat owner.",
       );
       return;
+    }
+
+    const xiatongResult = await routeInboundThroughXiatong(
+      channelMessage ?? toChannelInboundMessage(message),
+    );
+    if (xiatongResult.kind === "handled") {
+      appendDaemonLog(
+        `xiantong_route: action=handled reason=${truncatePreview(xiatongResult.reason, 120)}`,
+      );
+      await this.queueWechatMessage(message.senderId, xiatongResult.reply, "notice");
+      return;
+    }
+    if (xiatongResult.kind === "forward") {
+      appendDaemonLog(
+        `xiantong_route: action=forward reason=${truncatePreview(xiatongResult.decision.reason ?? "forward", 120)}`,
+      );
     }
 
     const emojiMatch = resolveEmojiCommand(message.text);

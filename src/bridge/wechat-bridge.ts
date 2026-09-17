@@ -44,6 +44,7 @@ import {
   shouldDeferCodexInboundMessage,
 } from "../core/bridge-defer.ts";
 import { TurnCoordinator } from "../core/turn-coordinator.ts";
+import { routeInboundThroughXiatong } from "../core/xiantong-router-hook.ts";
 import { handleAdapterControl } from "./adapter-control.ts";
 import { forwardBridgeEvent } from "../core/bridge-event-forwarder.ts";
 import { isDirectModuleRun } from "../core/direct-run.ts";
@@ -1671,6 +1672,22 @@ async function handleInboundMessage(params: {
         : "Unauthorized. This bridge only accepts messages from the configured WeChat owner.",
     );
     return null;
+  }
+
+  const xiatongResult = await routeInboundThroughXiatong(
+    channelMessage ?? toChannelInboundMessage(message),
+  );
+  if (xiatongResult.kind === "handled") {
+    stateStore.appendLog(
+      `xiantong_route: action=handled reason=${truncatePreview(xiatongResult.reason, 120)}`,
+    );
+    await queueWechatMessage(message.senderId, xiatongResult.reply, "notice");
+    return null;
+  }
+  if (xiatongResult.kind === "forward") {
+    stateStore.appendLog(
+      `xiantong_route: action=forward reason=${truncatePreview(xiatongResult.decision.reason ?? "forward", 120)}`,
+    );
   }
 
   const systemCommand = parseWechatControlCommand(message.text, {

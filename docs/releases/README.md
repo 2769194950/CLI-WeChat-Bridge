@@ -4,6 +4,10 @@
 
 ## 版本列表
 
+### [v1.1.8](./1.1.8.md) / [中文说明](./1.1.8_CN.md)
+**全适配器模型/计划控制 + 会话路由正确性 + Codex 0.155 与 Pi 0.85 兼容**
+1.1.8 将 `/model` 与 `/plan` 扩展到 Codex、Claude Code、OpenCode 与 Pi：Codex 走 app-server 设置 API，Claude 驱动受保护的原生选择器，OpenCode 全部经权威 server session API，Pi 通过原生 extension 切换模型。企业微信并发 conversation 不再串线：入站回复绑定独立 async 上下文，异步事件入队时捕获目标，槽位持有原子 turn 租约并支持失败回滚与迟到事件防护。Codex 已验证范围扩展至 0.155，可见客户端改为始终新建会话以绕过惰性落盘导致的 `no rollout found` 崩溃；Pi 每个 turn 结束都会报告完成，修复后续消息被永久 busy 拒绝的问题。daemon 增加带认证的 supervisor 退出控制与 Ctrl+C 长轮询中止；新增每周四 CLI 兼容性 workflow，修复 CI 依赖安装，Star History 改为周更。
+
 ### [v1.1.7](./1.1.7.md) / [中文说明](./1.1.7_CN.md)
 **企业微信原生智能机器人接入 + Claude/Windows/微信登录兼容性修复 + 静态 Star History**
 1.1.7 新增基于 `@wecom/aibot-node-sdk@1.0.7` 的企业微信智能机器人 WebSocket 通道，提供 `wecom-setup`、`wecom-daemon` 和四个 `wecom-*` 适配器入口。企业微信支持内部单聊和内部群聊、一次性 `/pair` 操作者配对、入站媒体下载解密和出站媒体发送；凭据、附件和去重状态存放在 `~/.cli-bridge/wecom`，每个 Bot 同时只保持一个有效连接。Claude daemon 的远程输入在 Windows PTY 漏掉首次 Enter 时会按限定间隔重试；Windows 进程身份检查改为针对记录 PID 的定向查询，CI 现在区分 Node.js 22.13.0 和 24 的六个检查。`wechat-setup` 保留 Windows 默认 `small` 二维码，同时支持 `--qr-mode normal`、交互终端校验、终端宽度检测和浏览器 fallback。README 的托管 Star History 图片已替换为仓库内固定 PNG 路径，并新增定时/手动 GitHub Action 生成静态图表。

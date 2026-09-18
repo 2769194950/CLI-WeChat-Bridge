@@ -61,7 +61,7 @@
 | 全部 `wechat-bridge*` | 从 npm bin 和 `bin/` 立即删除 | 内部 `wechat-bridge.ts` runtime 继续存在 |
 | 手动双终端用户流程 | 删除 | 维护者仍可使用源码 `bridge:*` 与 companion scripts 调试 |
 | Shell adapter | 完整删除 | 旧 shell lock/endpoint 只保留 legacy 读取和清理 |
-| 默认会话 | Codex restore；Claude、OpenCode、Pi new | 沿用已验证的 starter 行为 |
+| 默认会话 | 全部 adapter 默认 new；Codex 0.155+ 惰性落盘使预建线程 resume 崩溃，改由可见 TUI 新建后跟随；显式 `--session-start-mode restore` 与微信 `/resume` 仍可恢复已落盘会话 | 与 1.1.8 Codex 兼容修复同步 |
 
 ## 5. 当前公开 CLI
 

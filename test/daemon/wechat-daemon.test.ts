@@ -151,8 +151,8 @@ describe("wechat-daemon helpers", () => {
     }
   });
 
-  test("defaultDaemonSessionStartMode restores Codex while starting other adapters fresh", () => {
-    expect(defaultDaemonSessionStartMode("codex")).toBe("restore");
+  test("defaultDaemonSessionStartMode starts every adapter fresh", () => {
+    expect(defaultDaemonSessionStartMode("codex")).toBe("new");
     expect(defaultDaemonSessionStartMode("claude")).toBe("new");
     expect(defaultDaemonSessionStartMode("opencode")).toBe("new");
     expect(defaultDaemonSessionStartMode("pi")).toBe("new");
@@ -220,7 +220,7 @@ describe("wechat-daemon helpers", () => {
         slotCreated: true,
         visibleConnected: false,
       }),
-    ).toBe("restore");
+    ).toBe("new");
   });
 
   test("resolveDaemonSessionStartMode starts Pi fresh when opening its first visible companion", () => {

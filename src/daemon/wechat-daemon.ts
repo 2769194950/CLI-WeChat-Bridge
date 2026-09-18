@@ -109,7 +109,6 @@ import {
 import {
   createRuntimeHost,
 } from "../runtime/create-runtime-host.ts";
-import { hasVisibleClientSessionPreparer } from "../runtime/runtime-types.ts";
 import { toChannelInboundMessage } from "../channels/wechat/channel-message.ts";
 import { routeBridgeMessage } from "../core/bridge-message-router.ts";
 import {
@@ -422,9 +421,14 @@ export function parseDaemonSwitchDirective(text: string): DaemonSwitchDirective 
 }
 
 export function defaultDaemonSessionStartMode(
-  adapter: DaemonAdapterKind,
+  _adapter: DaemonAdapterKind,
 ): BridgeSessionStartMode {
-  return adapter === "codex" ? "restore" : "new";
+  // Codex 0.155+ persists app-server threads lazily, so resuming a freshly
+  // prepared (not yet persisted) thread crashes the visible TUI bootstrap
+  // with "no rollout found". Every adapter therefore opens a fresh session
+  // by default; explicit --session-start-mode restore and WeChat /resume
+  // remain available for deliberate restores of persisted threads.
+  return "new";
 }
 
 export function resolveDaemonSessionStartMode(params: {
@@ -443,9 +447,6 @@ export function resolveDaemonSessionStartMode(params: {
     return params.explicitSessionStartMode;
   }
   if (params.reuseExistingVisible && params.visibleConnected) {
-    return "restore";
-  }
-  if (params.adapter === "codex") {
     return "restore";
   }
   if (params.slotCreated) {
@@ -1388,35 +1389,9 @@ class WechatDaemon {
         `dead_visible_codex_runtime_restarted: cwd=${this.cwd}`,
       );
     }
-    let sharedSessionBeforeVisible = getSharedSessionIdFromAdapterState(
+    const sharedSessionBeforeVisible = getSharedSessionIdFromAdapterState(
       slot.runtime.getState(),
     );
-    let preparedVisibleThread = false;
-    if (
-      adapter === "codex" &&
-      !sharedSessionBeforeVisible &&
-      !visibleConnected &&
-      hasVisibleClientSessionPreparer(slot.runtime)
-    ) {
-      try {
-        if (await slot.runtime.prepareVisibleClientSession()) {
-          preparedVisibleThread = true;
-          sharedSessionBeforeVisible = getSharedSessionIdFromAdapterState(
-            slot.runtime.getState(),
-          );
-          slot.controller.syncLocalClientEndpoint();
-          if (sharedSessionBeforeVisible) {
-            appendDaemonLog(
-              `codex_visible_thread_prepared: thread=${sharedSessionBeforeVisible} cwd=${this.cwd}`,
-            );
-          }
-        }
-      } catch (error) {
-        appendDaemonLog(
-          `codex_visible_thread_prepare_failed: cwd=${this.cwd} error=${truncatePreview(error instanceof Error ? error.message : String(error), 400)}`,
-        );
-      }
-    }
     const sessionStartMode = resolveDaemonSessionStartMode({
       adapter,
       explicitSessionStartMode: options.sessionStartMode,
@@ -1445,7 +1420,7 @@ class WechatDaemon {
         // A freshly prepared blank thread is semantically a new session, but
         // the visible client must resume its id from the endpoint instead of
         // creating a second thread of its own.
-        sessionStartMode: preparedVisibleThread ? "restore" : sessionStartMode,
+        sessionStartMode,
         cliArgs: options.cliArgs,
         channelId: this.channelId,
         onError: (error) => {

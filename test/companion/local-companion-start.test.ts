@@ -26,7 +26,7 @@ describe("local-companion-start helpers", () => {
     expect(options.adapter).toBe("codex");
     expect(options.cwd).toBe(process.cwd());
     expect(options.timeoutMs).toBe(15000);
-    expect(options.sessionStartMode).toBe("restore");
+    expect(options.sessionStartMode).toBe("new");
     expect(options.cliArgs).toEqual([]);
   });
 

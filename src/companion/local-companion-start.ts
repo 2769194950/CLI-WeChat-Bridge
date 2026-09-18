@@ -132,9 +132,14 @@ export function formatRestartUnhealthyMessage(cwd: string): string {
 }
 
 export function defaultSessionStartMode(
-  adapter: LocalCompanionLaunchAdapter,
+  _adapter: LocalCompanionLaunchAdapter,
 ): BridgeSessionStartMode {
-  return adapter === "codex" ? "restore" : "new";
+  // Codex 0.155+ persists app-server threads lazily, so launching the visible
+  // client with a freshly prepared (not yet persisted) thread id crashes its
+  // bootstrap with "no rollout found". Start every adapter fresh by default;
+  // explicit --session-start-mode restore remains available for deliberate
+  // restores of already persisted threads.
+  return "new";
 }
 
 export function decideLaunchAction(

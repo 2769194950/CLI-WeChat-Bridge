@@ -7,9 +7,20 @@ type PiSessionManager = {
   getSessionId(): string;
 };
 
+type PiModel = {
+  id: string;
+  provider: string;
+  name?: string;
+};
+
 type PiExtensionContext = {
   isIdle(): boolean;
   abort(): void;
+  model?: PiModel;
+  modelRegistry: {
+    getAvailable(): PiModel[];
+  };
+  scopedModels: ReadonlyArray<{ model: PiModel }>;
   sessionManager: PiSessionManager;
   newSession(options?: {
     withSession?: (context: PiExtensionContext) => Promise<void>;
@@ -41,6 +52,7 @@ type PiExtensionApi = {
       expandPromptTemplates?: boolean;
     },
   ): void;
+  setModel(model: PiModel): Promise<boolean>;
 };
 
 type BridgeCommand = {
@@ -50,6 +62,7 @@ type BridgeCommand = {
   sessionPath?: string;
   sessionId?: string;
   cwd?: string;
+  modelId?: string;
 };
 
 const BRIDGE_HOST = "127.0.0.1";
@@ -236,7 +249,7 @@ export default function piTuiBridgeExtension(pi: PiExtensionApi): void {
     },
   });
 
-  const executeCommand = (command: BridgeCommand) => {
+  const executeCommand = async (command: BridgeCommand) => {
     try {
       if (command.type === "prompt" && typeof command.text === "string") {
         if (!latestContext?.isIdle()) {
@@ -247,6 +260,59 @@ export default function piTuiBridgeExtension(pi: PiExtensionApi): void {
       } else if (command.type === "abort") {
         latestContext?.abort();
         writeFrame({ type: "response", id: command.id, success: true });
+      } else if (command.type === "list_models") {
+        if (!latestContext) {
+          throw new Error("Pi session context is not ready.");
+        }
+        const models = latestContext.scopedModels.length > 0
+          ? latestContext.scopedModels.map((entry) => entry.model)
+          : latestContext.modelRegistry.getAvailable();
+        writeFrame({
+          type: "response",
+          id: command.id,
+          success: true,
+          data: {
+            models: models.map((model) => ({
+              id: `${model.provider}/${model.id}`,
+              displayName: model.name
+                ? `${model.name} (${model.provider})`
+                : `${model.id} (${model.provider})`,
+              isCurrent: latestContext?.model?.provider === model.provider &&
+                latestContext.model.id === model.id,
+            })),
+          },
+        });
+      } else if (command.type === "select_model" && typeof command.modelId === "string") {
+        if (!latestContext?.isIdle()) {
+          throw new Error("Pi TUI is already processing a turn.");
+        }
+        const models = latestContext.scopedModels.length > 0
+          ? latestContext.scopedModels.map((entry) => entry.model)
+          : latestContext.modelRegistry.getAvailable();
+        const model = models.find(
+          (candidate) => `${candidate.provider}/${candidate.id}` === command.modelId,
+        );
+        if (!model) {
+          throw new Error(`Pi model is no longer available: ${command.modelId}`);
+        }
+        const selected = await pi.setModel(model);
+        if (!selected) {
+          throw new Error(`Pi could not switch to model: ${command.modelId}`);
+        }
+        writeFrame({
+          type: "response",
+          id: command.id,
+          success: true,
+          data: {
+            model: {
+              id: `${model.provider}/${model.id}`,
+              displayName: model.name
+                ? `${model.name} (${model.provider})`
+                : `${model.id} (${model.provider})`,
+              isCurrent: true,
+            },
+          },
+        });
       } else if (command.type === "new_session" && typeof command.id === "string") {
         pi.sendUserMessage(`/${INTERNAL_NEW_COMMAND} ${command.id}`, {
           expandPromptTemplates: true,
@@ -317,7 +383,7 @@ export default function piTuiBridgeExtension(pi: PiExtensionApi): void {
       try {
         const parsed = JSON.parse(line) as unknown;
         if (isRecord(parsed)) {
-          dispatchCommand(parsed);
+          void dispatchCommand(parsed);
         }
       } catch {
         // Ignore malformed bridge commands and keep the native TUI alive.
@@ -335,7 +401,7 @@ export default function piTuiBridgeExtension(pi: PiExtensionApi): void {
       typeof event.reason === "string" ? event.reason : "startup",
     );
     for (const command of queuedCommands.splice(0)) {
-      executeCommand(command);
+      void executeCommand(command);
     }
   });
   pi.on("input", (event, context) => {

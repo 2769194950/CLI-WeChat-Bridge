@@ -28,6 +28,11 @@ describe("Pi TUI bridge extension", () => {
     const registeredCommands = new Map<string, PiCommandHandler>();
     const sentMessages: string[] = [];
     const switchedSessionPaths: string[] = [];
+    const selectedModels: Array<{ provider: string; id: string }> = [];
+    const availableModels = [
+      { provider: "openai", id: "gpt-5", name: "GPT-5" },
+      { provider: "anthropic", id: "claude-sonnet", name: "Claude Sonnet" },
+    ];
     const frames: Record<string, unknown>[] = [];
     let clientSocket: net.Socket | null = null;
     let buffer = "";
@@ -68,6 +73,11 @@ describe("Pi TUI bridge extension", () => {
     const context: PiExtensionContext = {
       isIdle: () => idle,
       abort: () => undefined,
+      model: availableModels[0],
+      modelRegistry: {
+        getAvailable: () => availableModels,
+      },
+      scopedModels: [],
       sessionManager: {
         getSessionId: () => "pi-session-new",
         getSessionFile: () => "C:\\pi\\session.jsonl",
@@ -90,6 +100,11 @@ describe("Pi TUI bridge extension", () => {
           registeredCommands.set(name, options.handler);
         },
         sendUserMessage: (content) => sentMessages.push(content),
+        setModel: async (model) => {
+          selectedModels.push(model);
+          context.model = model;
+          return true;
+        },
       });
 
       await waitFor(() => frames.some((frame) => frame.type === "hello"));
@@ -111,6 +126,41 @@ describe("Pi TUI bridge extension", () => {
         expect.objectContaining({
           type: "response",
           id: "prompt-1",
+          success: true,
+        }),
+      );
+
+      clientSocket?.write(
+        `${JSON.stringify({ id: "models-1", type: "list_models" })}\n`,
+      );
+      await waitFor(() => frames.some((frame) => frame.id === "models-1"));
+      expect(frames).toContainEqual(
+        expect.objectContaining({
+          type: "response",
+          id: "models-1",
+          success: true,
+          data: {
+            models: [
+              { id: "openai/gpt-5", displayName: "GPT-5 (openai)", isCurrent: true },
+              { id: "anthropic/claude-sonnet", displayName: "Claude Sonnet (anthropic)", isCurrent: false },
+            ],
+          },
+        }),
+      );
+
+      clientSocket?.write(
+        `${JSON.stringify({
+          id: "model-1",
+          type: "select_model",
+          modelId: "anthropic/claude-sonnet",
+        })}\n`,
+      );
+      await waitFor(() => frames.some((frame) => frame.id === "model-1"));
+      expect(selectedModels).toEqual([availableModels[1]]);
+      expect(frames).toContainEqual(
+        expect.objectContaining({
+          type: "response",
+          id: "model-1",
           success: true,
         }),
       );

@@ -10,6 +10,7 @@ import type {
   BridgeAdapter,
   BridgeAdapterState,
   BridgeEvent,
+  BridgeModelOption,
   BridgeResumeSessionCandidate,
   BridgeSessionSwitchReason,
   BridgeSessionSwitchSource,
@@ -445,6 +446,45 @@ export class PiTuiAdapter implements BridgeAdapter {
     } finally {
       this.pendingSessionSwitch = null;
     }
+  }
+
+  async listModels(): Promise<BridgeModelOption[]> {
+    if (this.state.status === "busy") {
+      throw new Error("Pi is still working. Wait for the current turn before listing models.");
+    }
+    const response = await this.sendCommand("list_models");
+    if (!isRecord(response.data) || !Array.isArray(response.data.models)) {
+      throw new Error("Pi TUI returned an invalid model list.");
+    }
+    return response.data.models
+      .filter((model): model is Record<string, unknown> => isRecord(model))
+      .filter(
+        (model) => typeof model.id === "string" && typeof model.displayName === "string",
+      )
+      .map((model) => ({
+        id: model.id as string,
+        displayName: model.displayName as string,
+        isCurrent: model.isCurrent === true,
+      }));
+  }
+
+  async selectModel(modelId: string): Promise<BridgeModelOption> {
+    if (this.state.status === "busy") {
+      throw new Error("Pi is still working. Wait for the current turn before switching models.");
+    }
+    const response = await this.sendCommand("select_model", { modelId });
+    if (!isRecord(response.data) || !isRecord(response.data.model)) {
+      throw new Error("Pi TUI returned an invalid selected model.");
+    }
+    const model = response.data.model;
+    if (typeof model.id !== "string" || typeof model.displayName !== "string") {
+      throw new Error("Pi TUI returned an invalid selected model.");
+    }
+    return {
+      id: model.id,
+      displayName: model.displayName,
+      isCurrent: true,
+    };
   }
 
   async interrupt(): Promise<boolean> {

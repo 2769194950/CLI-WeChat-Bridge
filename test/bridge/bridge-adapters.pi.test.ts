@@ -326,11 +326,31 @@ describe("Pi TUI lifecycle", () => {
             socket,
             (frame) => {
               commands.push(frame);
+              const data = frame.type === "list_models"
+                ? {
+                    models: [
+                      {
+                        id: "openai/gpt-5",
+                        displayName: "GPT-5 (openai)",
+                        isCurrent: true,
+                      },
+                    ],
+                  }
+                : frame.type === "select_model"
+                  ? {
+                      model: {
+                        id: frame.modelId,
+                        displayName: "GPT-5 (openai)",
+                        isCurrent: true,
+                      },
+                    }
+                  : undefined;
               socket.write(
                 `${JSON.stringify({
                   type: "response",
                   id: frame.id,
                   success: true,
+                  data,
                 })}\n`,
               );
             },
@@ -362,6 +382,18 @@ describe("Pi TUI lifecycle", () => {
     );
     await waitForTurn();
     expect(events.length).toBeGreaterThan(eventCountBeforeSessionState);
+    expect(await adapter.listModels()).toEqual([
+      {
+        id: "openai/gpt-5",
+        displayName: "GPT-5 (openai)",
+        isCurrent: true,
+      },
+    ]);
+    expect(await adapter.selectModel("openai/gpt-5")).toEqual({
+      id: "openai/gpt-5",
+      displayName: "GPT-5 (openai)",
+      isCurrent: true,
+    });
     await adapter.sendInput("Check the workspace");
     extensionSocket?.write(
       `${JSON.stringify({
@@ -381,6 +413,12 @@ describe("Pi TUI lifecycle", () => {
         stdio: "inherit",
         windowsHide: false,
       }),
+    );
+    expect(commands).toContainEqual(
+      expect.objectContaining({ type: "list_models" }),
+    );
+    expect(commands).toContainEqual(
+      expect.objectContaining({ type: "select_model", modelId: "openai/gpt-5" }),
     );
     expect(commands).toContainEqual(
       expect.objectContaining({ type: "prompt", text: "Check the workspace" }),

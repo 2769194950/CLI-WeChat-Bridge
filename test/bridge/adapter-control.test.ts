@@ -69,9 +69,12 @@ describe("shared adapter model and plan commands", () => {
     expect(await handleAdapterControl(f.adapter, "u", { type: "plan", enabled: true })).toBe("Native selector disconnected");
   });
 
-  test("Pi remains explicitly unsupported", async () => {
+  test("Pi supports model selection while plan mode remains extension-defined", async () => {
     const f = fixture("pi");
-    expect(await handleAdapterControl(f.adapter, "u", { type: "model" })).toContain("not available for Pi");
+    f.adapter.setPlanMode = undefined;
+    expect(await handleAdapterControl(f.adapter, "u", { type: "model" })).toContain("Available Pi models");
+    expect(await handleAdapterControl(f.adapter, "u", { type: "model", target: "1" })).toContain("Pi model switched");
+    expect(f.selected).toEqual(["provider/model"]);
     expect(await handleAdapterControl(f.adapter, "u", { type: "plan", enabled: true })).toContain("not available for Pi");
     expect(f.plans).toEqual([]);
   });

@@ -30,7 +30,6 @@ export async function handleAdapterControl(
   const kind = adapter.getState().kind;
   const name = kind === "claude" ? "Claude Code" : kind === "opencode" ? "OpenCode" : kind === "codex" ? "Codex" : "Pi";
   try {
-    if (kind === "pi") throw new Error(`/${command.type} is not available for ${name}.`);
     if (command.type === "plan") {
       if (!adapter.setPlanMode) throw new Error(`Plan mode is not available for ${name}.`);
       const enabled = await adapter.setPlanMode(command.enabled);

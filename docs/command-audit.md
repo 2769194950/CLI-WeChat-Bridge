@@ -50,7 +50,7 @@
 | MCP tools | 9 | 整体属于次要/历史 MCP 工作流，与当前 daemon/bridge 产品面并存 |
 | daemon IPC 命令 | 4 | 全部为内部协议，不是公开命令 |
 | local companion 请求 | 10 | 全部为 bridge 与可见 CLI 之间的内部协议 |
-| Pi extension 请求 | 4 | 全部为 Pi 原生 TUI bridge 的内部协议 |
+| Pi extension 请求 | 6 | 全部为 Pi 原生 TUI bridge 的内部协议 |
 
 ## 4. 已确认的命令面决策
 
@@ -200,6 +200,8 @@ standalone 模式按以下顺序处理：
 | --- | --- | --- | --- | --- |
 | 普通文本 | daemon、standalone | 转发给 active adapter；daemon 会先确保可见 CLI 存活 | 产品核心数据路径 | 核心保留 |
 | `/status` | daemon、standalone | daemon 返回工作区、active adapter 和所有 slot；standalone 返回当前 bridge/adapter 状态 | 两种模式输出粒度不同 | 核心保留 |
+| `/model [编号]` | daemon、standalone | Codex、Claude Code、OpenCode、Pi 列出并切换当前会话模型；Pi 通过原生 extension API 执行 | 编号快照绑定操作者、进程和 session，5 分钟失效 | 核心会话命令 |
+| `/plan [on|off]` | daemon、standalone | Codex、Claude Code、OpenCode 切换计划模式；Pi 基础运行时不保证 plan extension，因此不开放 | 各 adapter 原生计划模式语义不同 | 高级保留 |
 | `/resume [target]` | daemon、standalone | 四个 adapter：无 target 时列出最近 8 条并缓存 5 分钟，target 可用编号、完整 ID 或唯一 ID 前缀；busy/审批/待回答状态拒绝切换。电脑端主动切换会反向更新 shared thread/session、清除旧编号快照；若微信任务仍在运行则先中断旧任务。Codex 通过 app-server 预检与 token-protected visible supervisor 确认，Claude 通过 SessionEnd/SessionStart Hook 确认，OpenCode 通过临时 route reporter 确认，Pi 通过 extension session state 确认 | 仅限当前工作目录；成功回执在可见 TUI/Hook 控制调用完成后发送；active Codex thread 与运行中的 Claude background session 不接管 | 核心会话命令；四个 adapter 已形成统一入口 |
 | `/new` | daemon、standalone | 调用 adapter `createSession()`；不支持时返回提示 | 与 `/reset` 容易混淆 | 高级保留 |
 | `/new-session` | daemon、standalone | `/new` 的完全别名 | 增加命令面但语义清晰 | 候选合并；保留 `/new` 即可满足功能 |
@@ -377,6 +379,8 @@ standalone 模式按以下顺序处理：
 | `switch_session` | 切换 Pi session 文件 | 内部勿动 |
 | `new_session` | 在当前 Pi TUI 中创建新 session | 内部勿动 |
 | `abort` | 中断 Pi 当前 turn | 内部勿动 |
+| `list_models` | 从 scoped models 或 model registry 返回可用模型 | 内部勿动 |
+| `select_model` | 通过 `pi.setModel()` 切换原生 TUI 当前模型 | 内部勿动 |
 
 Pi extension 还注册内部命令 `__cli_bridge_new` 和 `__cli_bridge_switch`，用于在 Pi 自身命令系统中携带 bridge request ID；不能当作公开 slash command 文档化。
 

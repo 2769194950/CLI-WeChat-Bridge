@@ -720,6 +720,10 @@ export class PiTuiAdapter implements BridgeAdapter {
       } else if (this.currentAssistantText) {
         this.emit({ type: "final_reply", text: this.currentAssistantText, timestamp: nowIso() });
       }
+      // Mirror the other adapters: a settled turn always reports completion so
+      // bridge/daemon ownership state is released even when the turn produced
+      // no visible reply.
+      this.emit({ type: "task_complete", timestamp: nowIso() });
       this.state.lastOutputAt = nowIso();
       this.clearActiveTurn();
       this.setStatus("idle");

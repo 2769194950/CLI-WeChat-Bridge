@@ -200,6 +200,45 @@ describe("Pi sessions", () => {
 });
 
 describe("Pi TUI lifecycle", () => {
+  test("emits task_complete whenever a tracked turn settles", async () => {
+    const adapter = new PiTuiAdapter({
+      kind: "pi",
+      command: "pi",
+      cwd: process.cwd(),
+      renderMode: "companion",
+    });
+    const events: BridgeEvent[] = [];
+    adapter.setEventSink((event) => events.push(event));
+    const internal = adapter as unknown as {
+      state: { status: string; activeTurnId?: string; activeTurnOrigin?: string };
+      currentTurnError: string;
+      handleFrame(frame: Record<string, unknown>, socket: net.Socket): void;
+    };
+
+    // Failed WeChat turn: task_failed must be followed by task_complete so the
+    // bridge releases turn ownership instead of staying busy forever.
+    internal.state.status = "busy";
+    internal.state.activeTurnId = "pi-turn-error";
+    internal.state.activeTurnOrigin = "wechat";
+    internal.currentTurnError = "model exploded";
+    internal.handleFrame({ type: "agent_settled" }, {} as net.Socket);
+    await waitForCondition(() => adapter.getState().status === "idle");
+
+    // Turn with no visible reply: still completes so ownership is released.
+    internal.state.status = "busy";
+    internal.state.activeTurnId = "pi-turn-silent";
+    internal.state.activeTurnOrigin = "wechat";
+    internal.currentTurnError = "";
+    internal.handleFrame({ type: "agent_settled" }, {} as net.Socket);
+    await waitForCondition(() => adapter.getState().status === "idle");
+
+    const types = events
+      .map((event) => event.type)
+      .filter((type) => type !== "status");
+    expect(types).toEqual(["task_failed", "task_complete", "task_complete"]);
+    expect(adapter.getState().activeTurnOrigin).toBeUndefined();
+  });
+
   test("interrupts a WeChat turn when the local Pi TUI switches sessions", async () => {
     const adapter = new PiTuiAdapter({
       kind: "pi",
@@ -455,6 +494,16 @@ describe("Pi TUI lifecycle", () => {
       expect.objectContaining({ text: "Done" }),
       expect.objectContaining({ text: "Local answer" }),
     ]);
+    const finalReplyIndexes = events
+      .map((event, index) => (event.type === "final_reply" ? index : -1))
+      .filter((index) => index >= 0);
+    const completeIndexes = events
+      .map((event, index) => (event.type === "task_complete" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(completeIndexes).toHaveLength(finalReplyIndexes.length);
+    for (let index = 0; index < finalReplyIndexes.length; index += 1) {
+      expect(completeIndexes[index]).toBeGreaterThan(finalReplyIndexes[index]!);
+    }
 
     await adapter.dispose();
     extensionSocket?.destroy();

@@ -1,0 +1,89 @@
+# Release automation for version tags (e.g. 1.1.7).
+#
+# Pushing a plain x.y.z tag runs the full quality gate, then creates a
+# GitHub Release whose body combines docs/releases/<tag>_CN.md with the
+# notes GitHub auto-generates (commit/PR list and full-changelog diff link).
+# A failed gate leaves no release behind. npm publishing stays manual.
+
+name: Release
+
+on:
+  push:
+    tags:
+      # Plain x.y.z tags like 1.1.7. Glob has no "+" quantifier, so each
+      # segment is "one digit followed by anything".
+      - "[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Quality gate and GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Cache Bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck:src
+
+      - name: Test
+        run: bun test test
+
+      - name: Build
+        run: bun run build
+
+      - name: Verify release notes exist
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ ! -f "docs/releases/${TAG}_CN.md" ]; then
+            echo "docs/releases/${TAG}_CN.md is missing; refusing to publish a release without notes." >&2
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # Start from GitHub's auto-generated notes (What's Changed, full changelog).
+          gh release create "$TAG" --title "$TAG" --verify-tag --generate-notes
+          # Prepend our curated Chinese release notes above the generated part.
+          GENERATED="$(gh release view "$TAG" --json body -q .body)"
+          {
+            cat "docs/releases/${TAG}_CN.md"
+            printf '\n---\n\n'
+            printf '%s\n' "$GENERATED"
+          } > /tmp/release-notes.md
+          gh release edit "$TAG" --notes-file /tmp/release-notes.md

@@ -1,0 +1,356 @@
+---
+import "../styles/global.css";
+import pkg from "../../../package.json";
+
+type Locale = "zh" | "en";
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const isZh = locale === "zh";
+const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const siteRoot = "https://unlinearity.github.io/CLI-WeChat-Bridge/";
+const pageUrl = isZh ? siteRoot : `${siteRoot}en/`;
+const alternateUrl = isZh ? `${base}en/` : base;
+const repoUrl = "https://github.com/UNLINEARITY/CLI-WeChat-Bridge";
+const npmUrl = "https://www.npmjs.com/package/cli-wechat-bridge";
+const docsUrl = `${repoUrl}#二快速开始`;
+const securityUrl = `${repoUrl}#三适配器支持情况`;
+const architectureUrl = `${repoUrl}/blob/main/docs/architecture.md`;
+const install = "npm install -g cli-wechat-bridge@latest";
+
+const copy = isZh ? {
+  title: "CLI WeChat Bridge｜微信与本地 CLI，真正的原生双向",
+  description: "从微信或企业微信操作本地 Codex、Claude Code、OpenCode 和 Pi。输入、审批、状态、会话与结果在手机和原生终端之间双向同步。",
+  lang: "EN",
+  nav: ["双向能力", "工作原理", "安全边界", "快速开始"],
+  navIds: ["capabilities", "architecture", "trust", "quickstart"],
+  github: "GitHub",
+  eyebrow: "WECHAT / WECOM × NATIVE LOCAL CLI",
+  headlineA: "微信与本地 CLI，",
+  headlineB: "真正的原生双向。",
+  lede: "不是把最终结果简单转发到手机，而是让输入、审批、提问、状态和会话在两端保持连贯。Codex、Claude Code、OpenCode 和 Pi 始终原生运行在你的电脑上。",
+  install: "复制安装命令",
+  copied: "已复制",
+  source: "查看 GitHub",
+  local: "本地执行",
+  native: "原生终端",
+  channels: "双通道",
+  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", request: "任务 / 控制", response: "结果 / 审批 / 状态" },
+  metrics: { stars: "GitHub Stars", version: "当前版本", downloads: "npm 总下载量" },
+  capability: {
+    eyebrow: "不只转发最终回复",
+    title: "一次交互，双向贯穿整个任务。",
+    lede: "手机是远程入口，本地终端仍是主工作界面。无论从哪一端开始，都围绕同一个本地会话继续。",
+    items: [
+      ["01", "远程输入与结果", "从微信发送自然语言或命令，本地 CLI 执行后把结果回复到原会话。"],
+      ["02", "终端与手机同步", "原生 CLI 保持可见、可操作；回到电脑后可以直接从当前上下文继续。"],
+      ["03", "审批与提问回流", "CLI 的审批、澄清和选择请求可回到手机，不必守在终端前等待。"],
+      ["04", "状态与会话控制", "远程切换 CLI、查询状态、停止任务、重置或恢复会话。"],
+    ],
+  },
+  architecture: {
+    eyebrow: "两层架构",
+    title: "通道负责抵达，Bridge 负责保持原生。",
+    lede: "消息进入当前工作区后，由 daemon 或直接启动器交给对应 adapter。每个 adapter 使用该 CLI 的原生通信方式，而不是把它替换成另一个聊天机器人。",
+    channel: "Channel",
+    orchestration: "Workspace bridge",
+    native: "Native CLI",
+    channelItems: ["WeChat iLink", "WeCom Bot"],
+    bridgeItems: ["Daemon / direct launcher", "Turn & session routing", "Approvals / local companion"],
+    cliItems: ["Codex · WebSocket RPC", "Claude Code · PTY + Hook", "OpenCode · HTTP + SSE", "Pi · TUI extension"],
+    upstream: "message · command · approval response",
+    downstream: "output · question · status · final reply",
+    detail: "阅读通信架构",
+  },
+  trust: {
+    eyebrow: "安全与边界",
+    title: "远程入口，不等于远程托管。",
+    lede: "Bridge 在你的电脑和当前用户权限下运行。它连接现有本地 CLI，不把项目迁移到网页工作区。",
+    items: [
+      ["任务留在本地", "工作目录、CLI 进程和会话状态保留在你的电脑；远程通道只负责传递消息与媒体。"],
+      ["身份与通道绑定", "个人微信使用登录账号；企业微信通过 Bot 凭据和操作者配对限制控制入口。"],
+      ["继承原生权限", "Codex、Claude Code 等沿用对应 CLI 的权限和审批语义；Pi 以全权限本地代理运行。"],
+      ["边界清晰可见", "daemon 绑定启动目录；你可以在本地终端观察、接管或停止运行中的会话。"],
+    ],
+    detail: "查看权限与适配器说明",
+  },
+  quickstart: {
+    eyebrow: "快速开始",
+    title: "三步接通你的本地 CLI。",
+    lede: "先安装并配置通道，再选择一个直接启动器或 daemon。启动命令不是连续步骤，而是不同运行方式。",
+    channel: "通道",
+    adapter: "启动方式",
+    steps: ["全局安装", "登录 / 配对", "选择启动方式"],
+    wechat: "微信",
+    wecom: "企业微信",
+    note: "需要 Node.js ≥ 22.13.0，并预先安装至少一个受支持的 CLI。Pi 0.85.0+ 需要 Node.js ≥ 22.19.0。",
+    docs: "查看完整安装说明",
+  },
+  proof: {
+    eyebrow: "真实运行记录",
+    title: "示意图讲清结构，真实记录证明它在工作。",
+    lede: "现有截图保留为补充证据。悬停暂停，点击可查看原图。",
+    captions: ["完整双向流程", "多 CLI 工作区", "微信端指令与绑定", "会话切换", "四个原生终端同时在线"],
+  },
+  closing: { title: "让任务离开屏幕，\n但不离开你的本地工作流。", install: "复制安装命令", github: "打开 GitHub" },
+  footer: "AGPL-3.0 · 本地优先 · 为原生 CLI 而建",
+} : {
+  title: "CLI WeChat Bridge | Native two-way control for local AI CLIs",
+  description: "Control local Codex, Claude Code, OpenCode, and Pi sessions from WeChat or WeCom. Inputs, approvals, status, sessions, and results stay connected to your native terminal.",
+  lang: "中文",
+  nav: ["Capabilities", "Architecture", "Trust", "Quick start"],
+  navIds: ["capabilities", "architecture", "trust", "quickstart"],
+  github: "GitHub",
+  eyebrow: "WECHAT / WECOM × NATIVE LOCAL CLI",
+  headlineA: "WeChat and local CLIs,",
+  headlineB: "truly two-way.",
+  lede: "More than forwarding a final answer. Inputs, approvals, questions, status, and sessions stay continuous across your phone and terminal, while Codex, Claude Code, OpenCode, and Pi keep running natively on your computer.",
+  install: "Copy install command",
+  copied: "Copied",
+  source: "View on GitHub",
+  local: "Local execution",
+  native: "Native terminals",
+  channels: "Two channels",
+  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", request: "tasks / control", response: "results / approvals / status" },
+  metrics: { stars: "GitHub Stars", version: "Current version", downloads: "Total npm downloads" },
+  capability: {
+    eyebrow: "Beyond final-answer forwarding",
+    title: "Two-way through the entire task.",
+    lede: "Your phone is the remote entry point; the native terminal remains the primary workspace. Start from either side and continue in the same local session.",
+    items: [
+      ["01", "Remote input and results", "Send natural language or commands from chat, run them in the local CLI, and receive results in the same conversation."],
+      ["02", "Phone and terminal continuity", "The native CLI stays visible and usable, ready for you to continue from the current context when you return."],
+      ["03", "Approvals and questions", "Route supported approval, clarification, and selection requests to your phone instead of waiting at the terminal."],
+      ["04", "Status and session control", "Switch CLIs, inspect status, stop tasks, and reset or resume sessions remotely."],
+    ],
+  },
+  architecture: {
+    eyebrow: "Two-layer architecture",
+    title: "Channels provide reach. The Bridge preserves native behavior.",
+    lede: "Messages enter the current workspace through a daemon or direct launcher, then reach the matching adapter. Each adapter uses the CLI's native communication path instead of replacing it with another hosted chatbot.",
+    channel: "Channel",
+    orchestration: "Workspace bridge",
+    native: "Native CLI",
+    channelItems: ["WeChat iLink", "WeCom Bot"],
+    bridgeItems: ["Daemon / direct launcher", "Turn & session routing", "Approvals / local companion"],
+    cliItems: ["Codex · WebSocket RPC", "Claude Code · PTY + Hook", "OpenCode · HTTP + SSE", "Pi · TUI extension"],
+    upstream: "message · command · approval response",
+    downstream: "output · question · status · final reply",
+    detail: "Read the architecture",
+  },
+  trust: {
+    eyebrow: "Trust and boundaries",
+    title: "A remote entry point, not a hosted workspace.",
+    lede: "The Bridge runs on your computer with your local user permissions. It connects existing local CLIs without moving your project into a web workspace.",
+    items: [
+      ["Work stays local", "The workspace, CLI processes, and session state remain on your computer; channels carry messages and media."],
+      ["Bound channel identity", "Personal WeChat uses the logged-in account; WeCom pairs an operator with configured bot credentials."],
+      ["Native permissions", "Codex and Claude Code retain their CLI permission semantics. Pi runs as a fully approved local agent."],
+      ["Visible boundaries", "A daemon is bound to its startup directory, and you can observe, take over, or stop sessions locally."],
+    ],
+    detail: "Review permissions and adapters",
+  },
+  quickstart: {
+    eyebrow: "Quick start",
+    title: "Connect a local CLI in three steps.",
+    lede: "Install, configure a channel, then choose either one direct launcher or the daemon. The launch commands are alternatives, not sequential steps.",
+    channel: "Channel",
+    adapter: "Launch mode",
+    steps: ["Install globally", "Log in / pair", "Choose a launcher"],
+    wechat: "WeChat",
+    wecom: "WeCom",
+    note: "Requires Node.js ≥ 22.13.0 and at least one supported CLI. Pi 0.85.0+ requires Node.js ≥ 22.19.0.",
+    docs: "Read the complete setup guide",
+  },
+  proof: {
+    eyebrow: "Real runs",
+    title: "Diagrams explain the system. Real captures prove it works.",
+    lede: "Existing captures remain as supporting evidence. Hover to pause and click to view the original.",
+    captions: ["Complete two-way flow", "Multi-CLI workspace", "Commands and bindings in WeChat", "Session switching", "Four native terminals online"],
+  },
+  closing: { title: "Let the task leave the screen,\nnot your local workflow.", install: "Copy install command", github: "Open GitHub" },
+  footer: "AGPL-3.0 · Local-first · Built for native CLIs",
+};
+
+const cliNodes = [
+  ["codex", "Codex"], ["anthropic", "Claude Code"], ["opencode", "OpenCode"], ["pi", "Pi"],
+];
+const proofImages = [
+  ["animation.webp", "1500", "924"], ["image-9.webp", "1200", "827"], ["image-10.webp", "1100", "1064"],
+  ["image-12.webp", "800", "589"], ["image-13.webp", "1400", "592"],
+];
+---
+<!doctype html>
+<html lang={isZh ? "zh-CN" : "en"}>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f9f8" />
+  <meta name="description" content={copy.description} />
+  <link rel="canonical" href={pageUrl} />
+  <link rel="alternate" hreflang="zh-CN" href={siteRoot} />
+  <link rel="alternate" hreflang="en" href={`${siteRoot}en/`} />
+  <link rel="alternate" hreflang="x-default" href={siteRoot} />
+  <link rel="icon" href={`${base}assets/icons/favicon.svg`} type="image/svg+xml" sizes="any" />
+  <link rel="icon" href={`${base}assets/generated/favicon-32.png`} type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href={`${base}assets/generated/apple-touch-icon.png`} />
+  <title>{copy.title}</title>
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CLI WeChat Bridge" />
+  <meta property="og:title" content={copy.title} />
+  <meta property="og:description" content={copy.description} />
+  <meta property="og:url" content={pageUrl} />
+  <meta property="og:image" content={`${siteRoot}assets/generated/og-image.jpg`} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CLI WeChat Bridge" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={copy.title} />
+  <meta name="twitter:description" content={copy.description} />
+  <meta name="twitter:image" content={`${siteRoot}assets/generated/og-image.jpg`} />
+</head>
+<body data-locale={locale} data-copy-success={copy.copied} data-base={base}>
+<header class="site-nav">
+  <a class="nav-brand" href={isZh ? base : `${base}en/`} aria-label="CLI WeChat Bridge">
+    <img src={`${base}assets/icons/favicon.svg`} alt="" /><span>CLI WeChat Bridge</span>
+  </a>
+  <nav aria-label={isZh ? "主导航" : "Main navigation"}>
+    {copy.nav.map((label, index) => <a href={`#${copy.navIds[index]}`}>{label}</a>)}
+  </nav>
+  <div class="nav-actions">
+    <a class="lang-link" href={alternateUrl} hreflang={isZh ? "en" : "zh-CN"}>{copy.lang}</a>
+    <a class="nav-github" href={repoUrl} target="_blank" rel="noreferrer">{copy.github} ↗</a>
+    <button class="menu-toggle" data-menu-toggle type="button" aria-label={isZh ? "打开菜单" : "Open menu"} aria-expanded="false"><span></span><span></span></button>
+  </div>
+</header>
+<main>
+  <section class="hero section" id="top">
+    <div class="hero-copy">
+      <img class="hero-logo" src={`${base}assets/real/logo.png`} alt="CLI WeChat Bridge" />
+      <p class="eyebrow">{copy.eyebrow}</p>
+      <h1>{copy.headlineA}<br /><em>{copy.headlineB}</em></h1>
+      <p class="hero-lede">{copy.lede}</p>
+      <div class="hero-actions">
+        <button class="button primary" data-copy={install} type="button">{copy.install}</button>
+        <a class="button secondary" href={repoUrl} target="_blank" rel="noreferrer">{copy.source} ↗</a>
+      </div>
+      <div class="hero-facts" aria-label={isZh ? "产品特点" : "Product facts"}>
+        <span>✓ {copy.local}</span><span>✓ {copy.native}</span><span>✓ {copy.channels}</span>
+      </div>
+    </div>
+
+    <div class="bridge-stage" data-bridge-stage data-active="bridge" aria-label={isZh ? "微信、CLI Bridge 与本地 CLI 的双向架构示意" : "Two-way architecture between channels, CLI Bridge, and local CLIs"}>
+      <div class="stage-glow"></div>
+      <p class="stage-hint">{isZh ? "移动指针，查看双向数据流" : "Move the pointer to explore the flow"}</p>
+      <svg class="stage-lines" viewBox="0 0 720 480" aria-hidden="true">
+        <defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+        <path class="flow-line channel-path" d="M112 145 C215 145 220 240 330 240" />
+        <path class="flow-line channel-path" d="M112 335 C215 335 220 240 330 240" />
+        <path class="flow-line cli-path" d="M390 240 C490 240 486 92 608 92" />
+        <path class="flow-line cli-path" d="M390 240 C495 240 500 192 608 192" />
+        <path class="flow-line cli-path" d="M390 240 C495 240 500 292 608 292" />
+        <path class="flow-line cli-path" d="M390 240 C490 240 486 392 608 392" />
+        <path class="pulse channel-path" d="M112 145 C215 145 220 240 330 240" pathLength="1" />
+        <path class="pulse channel-path reverse" d="M112 335 C215 335 220 240 330 240" pathLength="1" />
+        <path class="pulse cli-path" d="M390 240 C490 240 486 92 608 92" pathLength="1" />
+        <path class="pulse cli-path reverse" d="M390 240 C495 240 500 192 608 192" pathLength="1" />
+        <path class="pulse cli-path" d="M390 240 C495 240 500 292 608 292" pathLength="1" />
+        <path class="pulse cli-path reverse" d="M390 240 C490 240 486 392 608 392" pathLength="1" />
+      </svg>
+      <div class="stage-column channels">
+        <span class="column-label">{copy.heroDiagram.channel}</span>
+        <button class="stage-node channel-node" data-stage-node="channel" type="button"><span class="wechat-mark">••</span><b>WeChat</b><small>iLink</small></button>
+        <button class="stage-node channel-node" data-stage-node="channel" type="button"><span class="wecom-mark">W</span><b>WeCom</b><small>Smart Bot</small></button>
+      </div>
+      <button class="bridge-core" data-stage-node="bridge" type="button">
+        <span class="core-ring"></span><img src={`${base}assets/icons/favicon.svg`} alt="" /><b>{copy.heroDiagram.bridge}</b><small>{copy.heroDiagram.request}<br />↕<br />{copy.heroDiagram.response}</small>
+      </button>
+      <div class="stage-column cli-nodes">
+        <span class="column-label">{copy.heroDiagram.workspace}</span>
+        {cliNodes.map(([icon, name]) => <button class="stage-node cli-node" data-stage-node="cli" type="button"><img src={`${base}assets/icons/${icon}.svg`} alt="" /><b>{name}</b><small>native</small></button>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="metrics section compact" aria-label={isZh ? "项目指标" : "Project metrics"}>
+    <div><strong data-metric="stars">—</strong><span>{copy.metrics.stars}</span></div>
+    <div><strong data-metric="npmVersion">{pkg.version}</strong><span>{copy.metrics.version}</span></div>
+    <div><strong data-metric="downloads">—</strong><span>{copy.metrics.downloads}</span></div>
+  </section>
+
+  <section class="capabilities section section-space" id="capabilities">
+    <div class="section-heading">
+      <p class="eyebrow">{copy.capability.eyebrow}</p><h2>{copy.capability.title}</h2><p>{copy.capability.lede}</p>
+    </div>
+    <div class="capability-grid">
+      {copy.capability.items.map(([number, title, text]) => <article class="capability-card"><span>{number}</span><h3>{title}</h3><p>{text}</p><i aria-hidden="true">↔</i></article>)}
+    </div>
+  </section>
+
+  <section class="architecture section section-space" id="architecture">
+    <div class="section-heading split-heading">
+      <div><p class="eyebrow">{copy.architecture.eyebrow}</p><h2>{copy.architecture.title}</h2></div>
+      <p>{copy.architecture.lede}</p>
+    </div>
+    <div class="system-map">
+      <div class="system-column">
+        <span class="system-label">01 · {copy.architecture.channel}</span>
+        {copy.architecture.channelItems.map((item) => <div class="system-item"><i class="status-dot"></i>{item}</div>)}
+      </div>
+      <div class="system-transfer" aria-hidden="true"><span>→</span><small>{copy.architecture.upstream}</small><span>←</span><small>{copy.architecture.downstream}</small></div>
+      <div class="system-column bridge-column">
+        <span class="system-label">02 · {copy.architecture.orchestration}</span>
+        {copy.architecture.bridgeItems.map((item) => <div class="system-item"><i class="status-dot"></i>{item}</div>)}
+      </div>
+      <div class="system-transfer" aria-hidden="true"><span>→</span><small>native protocol</small><span>←</span><small>native events</small></div>
+      <div class="system-column">
+        <span class="system-label">03 · {copy.architecture.native}</span>
+        {copy.architecture.cliItems.map((item) => <div class="system-item"><i class="status-dot"></i>{item}</div>)}
+      </div>
+    </div>
+    <a class="text-link" href={architectureUrl} target="_blank" rel="noreferrer">{copy.architecture.detail} ↗</a>
+  </section>
+
+  <section class="trust section section-space" id="trust">
+    <div class="trust-intro"><p class="eyebrow">{copy.trust.eyebrow}</p><h2>{copy.trust.title}</h2><p>{copy.trust.lede}</p><a class="text-link" href={securityUrl} target="_blank" rel="noreferrer">{copy.trust.detail} ↗</a></div>
+    <div class="trust-list">
+      {copy.trust.items.map(([title, text], index) => <article><span>0{index + 1}</span><div><h3>{title}</h3><p>{text}</p></div></article>)}
+    </div>
+  </section>
+
+  <section class="quickstart section section-space" id="quickstart">
+    <div class="section-heading split-heading">
+      <div><p class="eyebrow">{copy.quickstart.eyebrow}</p><h2>{copy.quickstart.title}</h2></div><p>{copy.quickstart.lede}</p>
+    </div>
+    <div class="terminal-setup" data-command-builder data-channel="wechat" data-adapter="codex">
+      <div class="terminal-bar"><span></span><span></span><span></span><b>cli-wechat-bridge — setup</b></div>
+      <div class="setup-row"><span class="step-index">01</span><span class="step-label">{copy.quickstart.steps[0]}</span><code>$ {install}</code><button type="button" data-copy={install}>{isZh ? "复制" : "Copy"}</button></div>
+      <div class="setup-row"><span class="step-index">02</span><span class="step-label">{copy.quickstart.steps[1]}</span><code>$ <span data-setup-command>wechat-setup</span></code><button type="button" data-copy-dynamic="setup">{isZh ? "复制" : "Copy"}</button></div>
+      <div class="setup-row command-row"><span class="step-index">03</span><span class="step-label">{copy.quickstart.steps[2]}</span><code>$ <span data-command-prefix>wechat-</span><span class="rotating-word" data-command-word>codex</span></code><button type="button" data-copy-dynamic="launch">{isZh ? "复制" : "Copy"}</button></div>
+      <div class="command-controls">
+        <div><small>{copy.quickstart.channel}</small><button class="choice active" data-channel-choice="wechat" type="button">{copy.quickstart.wechat}</button><button class="choice" data-channel-choice="wecom" type="button">{copy.quickstart.wecom}</button></div>
+        <div><small>{copy.quickstart.adapter}</small>{["codex", "claude", "opencode", "pi", "daemon"].map((name) => <button class={`choice ${name === "codex" ? "active" : ""}`} data-adapter-choice={name} type="button">{name}</button>)}</div>
+      </div>
+      <p class="setup-note">{copy.quickstart.note}</p>
+    </div>
+    <a class="text-link" href={docsUrl} target="_blank" rel="noreferrer">{copy.quickstart.docs} ↗</a>
+  </section>
+
+  <section class="proof section section-space" id="proof">
+    <div class="section-heading split-heading"><div><p class="eyebrow">{copy.proof.eyebrow}</p><h2>{copy.proof.title}</h2></div><p>{copy.proof.lede}</p></div>
+    <div class="proof-rail" data-proof-rail>
+      <div class="proof-track">
+        {[...proofImages, ...proofImages].map(([file, width, height], index) => <a class="proof-card" href={`${base}assets/real/${file}`} target="_blank" rel="noreferrer"><img src={`${base}assets/real/${file}`} width={width} height={height} loading="lazy" alt={copy.proof.captions[index % proofImages.length]} /><span>{copy.proof.captions[index % proofImages.length]} ↗</span></a>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="closing section section-space">
+    <img src={`${base}assets/real/logo.png`} alt="" />
+    <h2>{copy.closing.title.split("\n").map((line) => <>{line}<br /></>)}</h2>
+    <div class="hero-actions"><button class="button primary" data-copy={install} type="button">{copy.closing.install}</button><a class="button secondary" href={repoUrl} target="_blank" rel="noreferrer">{copy.closing.github} ↗</a></div>
+  </section>
+</main>
+<footer class="footer section"><span>CLI WeChat Bridge</span><span>{copy.footer}</span><span><a href={npmUrl} target="_blank" rel="noreferrer">npm</a> · <a href={repoUrl} target="_blank" rel="noreferrer">GitHub</a></span></footer>
+<script src="../scripts/site.js"></script>
+</body>
+</html>

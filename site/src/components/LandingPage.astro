@@ -21,8 +21,8 @@ const copy = isZh ? {
   title: "CLI WeChat Bridge｜微信与本地 CLI，真正的原生双向",
   description: "从微信或企业微信操作本地 Codex、Claude Code、OpenCode 和 Pi。输入、审批、状态、会话与结果在手机和原生终端之间双向同步。",
   lang: "EN",
-  nav: ["双向能力", "工作原理", "安全边界", "快速开始"],
-  navIds: ["capabilities", "architecture", "trust", "quickstart"],
+  nav: ["快速开始", "双向能力", "工作原理", "安全边界"],
+  navIds: ["quickstart", "capabilities", "architecture", "trust"],
   github: "GitHub",
   eyebrow: "WECHAT / WECOM × NATIVE LOCAL CLI",
   headlineA: "微信与本地 CLI，",
@@ -34,7 +34,7 @@ const copy = isZh ? {
   local: "本地执行",
   native: "原生终端",
   channels: "双通道",
-  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", request: "任务 / 控制", response: "结果 / 审批 / 状态" },
+  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", request: "任务 / 控制", response: "结果 / 审批 / 状态", phases: ["等待双向交互", "任务正在发送", "正在路由到本地 CLI", "本地 CLI 正在执行", "结果、审批与状态正在回流"] },
   metrics: { stars: "GitHub Stars", version: "当前版本", downloads: "npm 总下载量" },
   capability: {
     eyebrow: "不只转发最终回复",
@@ -97,8 +97,8 @@ const copy = isZh ? {
   title: "CLI WeChat Bridge | Native two-way control for local AI CLIs",
   description: "Control local Codex, Claude Code, OpenCode, and Pi sessions from WeChat or WeCom. Inputs, approvals, status, sessions, and results stay connected to your native terminal.",
   lang: "中文",
-  nav: ["Capabilities", "Architecture", "Trust", "Quick start"],
-  navIds: ["capabilities", "architecture", "trust", "quickstart"],
+  nav: ["Quick start", "Capabilities", "Architecture", "Trust"],
+  navIds: ["quickstart", "capabilities", "architecture", "trust"],
   github: "GitHub",
   eyebrow: "WECHAT / WECOM × NATIVE LOCAL CLI",
   headlineA: "WeChat and local CLIs,",
@@ -110,7 +110,7 @@ const copy = isZh ? {
   local: "Local execution",
   native: "Native terminals",
   channels: "Two channels",
-  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", request: "tasks / control", response: "results / approvals / status" },
+  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", request: "tasks / control", response: "results / approvals / status", phases: ["Ready for two-way interaction", "Sending task", "Routing to the local CLI", "Local CLI is executing", "Results, approvals, and status are returning"] },
   metrics: { stars: "GitHub Stars", version: "Current version", downloads: "Total npm downloads" },
   capability: {
     eyebrow: "Beyond final-answer forwarding",
@@ -223,7 +223,8 @@ const proofImages = [
   </div>
 </header>
 <main>
-  <section class="hero section" id="top">
+  <div class="hero-scroll" id="top" data-hero-scroll>
+  <section class="hero section">
     <div class="hero-copy">
       <img class="hero-logo" src={`${base}assets/real/logo.png`} alt="CLI WeChat Bridge" />
       <p class="eyebrow">{copy.eyebrow}</p>
@@ -240,7 +241,10 @@ const proofImages = [
 
     <div class="bridge-stage" data-bridge-stage data-active="bridge" aria-label={isZh ? "微信、CLI Bridge 与本地 CLI 的双向架构示意" : "Two-way architecture between channels, CLI Bridge, and local CLIs"}>
       <div class="stage-glow"></div>
-      <p class="stage-hint">{isZh ? "移动指针，查看双向数据流" : "Move the pointer to explore the flow"}</p>
+      <p class="stage-hint">{isZh ? "滚动推进 · 移动指针探索" : "Scroll to advance · Move to explore"}</p>
+      <div class="stage-status" aria-live="polite">
+        <i></i>{copy.heroDiagram.phases.map((phase, index) => <span data-phase={index}>{phase}</span>)}
+      </div>
       <svg class="stage-lines" viewBox="0 0 720 480" aria-hidden="true">
         <defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
         <path class="flow-line channel-path" d="M112 145 C215 145 220 240 330 240" />
@@ -249,12 +253,17 @@ const proofImages = [
         <path class="flow-line cli-path" d="M390 240 C495 240 500 192 608 192" />
         <path class="flow-line cli-path" d="M390 240 C495 240 500 292 608 292" />
         <path class="flow-line cli-path" d="M390 240 C490 240 486 392 608 392" />
-        <path class="pulse channel-path" d="M112 145 C215 145 220 240 330 240" pathLength="1" />
-        <path class="pulse channel-path reverse" d="M112 335 C215 335 220 240 330 240" pathLength="1" />
-        <path class="pulse cli-path" d="M390 240 C490 240 486 92 608 92" pathLength="1" />
-        <path class="pulse cli-path reverse" d="M390 240 C495 240 500 192 608 192" pathLength="1" />
-        <path class="pulse cli-path" d="M390 240 C495 240 500 292 608 292" pathLength="1" />
-        <path class="pulse cli-path reverse" d="M390 240 C490 240 486 392 608 392" pathLength="1" />
+        <path class="story-pulse request-channel" d="M112 145 C215 145 220 240 330 240" pathLength="1" />
+        <path class="story-pulse request-cli" d="M390 240 C490 240 486 92 608 92" pathLength="1" />
+        <path class="story-pulse request-cli" d="M390 240 C495 240 500 192 608 192" pathLength="1" />
+        <path class="story-pulse request-cli" d="M390 240 C495 240 500 292 608 292" pathLength="1" />
+        <path class="story-pulse request-cli" d="M390 240 C490 240 486 392 608 392" pathLength="1" />
+        <path class="story-pulse return-cli" d="M390 240 C490 240 486 92 608 92" pathLength="1" />
+        <path class="story-pulse return-cli" d="M390 240 C495 240 500 192 608 192" pathLength="1" />
+        <path class="story-pulse return-cli" d="M390 240 C495 240 500 292 608 292" pathLength="1" />
+        <path class="story-pulse return-cli" d="M390 240 C490 240 486 392 608 392" pathLength="1" />
+        <path class="story-pulse return-channel" d="M112 145 C215 145 220 240 330 240" pathLength="1" />
+        <path class="story-pulse return-channel" d="M112 335 C215 335 220 240 330 240" pathLength="1" />
       </svg>
       <div class="stage-column channels">
         <span class="column-label">{copy.heroDiagram.channel}</span>
@@ -270,11 +279,30 @@ const proofImages = [
       </div>
     </div>
   </section>
+  </div>
 
   <section class="metrics section compact" aria-label={isZh ? "项目指标" : "Project metrics"}>
     <div><strong data-metric="stars">—</strong><span>{copy.metrics.stars}</span></div>
     <div><strong data-metric="npmVersion">{pkg.version}</strong><span>{copy.metrics.version}</span></div>
     <div><strong data-metric="downloads">—</strong><span>{copy.metrics.downloads}</span></div>
+  </section>
+
+  <section class="quickstart section section-space" id="quickstart">
+    <div class="section-heading split-heading">
+      <div><p class="eyebrow">{copy.quickstart.eyebrow}</p><h2>{copy.quickstart.title}</h2></div><p>{copy.quickstart.lede}</p>
+    </div>
+    <div class="terminal-setup" data-command-builder data-channel="wechat" data-adapter="codex">
+      <div class="terminal-bar"><span></span><span></span><span></span><b>cli-wechat-bridge — setup</b></div>
+      <div class="setup-row"><span class="step-index">01</span><span class="step-label">{copy.quickstart.steps[0]}</span><code>$ {install}</code><button type="button" data-copy={install}>{isZh ? "复制" : "Copy"}</button></div>
+      <div class="setup-row"><span class="step-index">02</span><span class="step-label">{copy.quickstart.steps[1]}</span><code>$ <span data-setup-command>wechat-setup</span></code><button type="button" data-copy-dynamic="setup">{isZh ? "复制" : "Copy"}</button></div>
+      <div class="setup-row command-row"><span class="step-index">03</span><span class="step-label">{copy.quickstart.steps[2]}</span><code>$ <span data-command-prefix>wechat-</span><span class="rotating-word" data-command-word>codex</span></code><button type="button" data-copy-dynamic="launch">{isZh ? "复制" : "Copy"}</button></div>
+      <div class="command-controls">
+        <div><small>{copy.quickstart.channel}</small><button class="choice active" data-channel-choice="wechat" type="button">{copy.quickstart.wechat}</button><button class="choice" data-channel-choice="wecom" type="button">{copy.quickstart.wecom}</button></div>
+        <div><small>{copy.quickstart.adapter}</small>{["codex", "claude", "opencode", "pi", "daemon"].map((name) => <button class={`choice ${name === "codex" ? "active" : ""}`} data-adapter-choice={name} type="button">{name}</button>)}</div>
+      </div>
+      <p class="setup-note">{copy.quickstart.note}</p>
+    </div>
+    <a class="text-link" href={docsUrl} target="_blank" rel="noreferrer">{copy.quickstart.docs} ↗</a>
   </section>
 
   <section class="capabilities section section-space" id="capabilities">
@@ -315,24 +343,6 @@ const proofImages = [
     <div class="trust-list">
       {copy.trust.items.map(([title, text], index) => <article><span>0{index + 1}</span><div><h3>{title}</h3><p>{text}</p></div></article>)}
     </div>
-  </section>
-
-  <section class="quickstart section section-space" id="quickstart">
-    <div class="section-heading split-heading">
-      <div><p class="eyebrow">{copy.quickstart.eyebrow}</p><h2>{copy.quickstart.title}</h2></div><p>{copy.quickstart.lede}</p>
-    </div>
-    <div class="terminal-setup" data-command-builder data-channel="wechat" data-adapter="codex">
-      <div class="terminal-bar"><span></span><span></span><span></span><b>cli-wechat-bridge — setup</b></div>
-      <div class="setup-row"><span class="step-index">01</span><span class="step-label">{copy.quickstart.steps[0]}</span><code>$ {install}</code><button type="button" data-copy={install}>{isZh ? "复制" : "Copy"}</button></div>
-      <div class="setup-row"><span class="step-index">02</span><span class="step-label">{copy.quickstart.steps[1]}</span><code>$ <span data-setup-command>wechat-setup</span></code><button type="button" data-copy-dynamic="setup">{isZh ? "复制" : "Copy"}</button></div>
-      <div class="setup-row command-row"><span class="step-index">03</span><span class="step-label">{copy.quickstart.steps[2]}</span><code>$ <span data-command-prefix>wechat-</span><span class="rotating-word" data-command-word>codex</span></code><button type="button" data-copy-dynamic="launch">{isZh ? "复制" : "Copy"}</button></div>
-      <div class="command-controls">
-        <div><small>{copy.quickstart.channel}</small><button class="choice active" data-channel-choice="wechat" type="button">{copy.quickstart.wechat}</button><button class="choice" data-channel-choice="wecom" type="button">{copy.quickstart.wecom}</button></div>
-        <div><small>{copy.quickstart.adapter}</small>{["codex", "claude", "opencode", "pi", "daemon"].map((name) => <button class={`choice ${name === "codex" ? "active" : ""}`} data-adapter-choice={name} type="button">{name}</button>)}</div>
-      </div>
-      <p class="setup-note">{copy.quickstart.note}</p>
-    </div>
-    <a class="text-link" href={docsUrl} target="_blank" rel="noreferrer">{copy.quickstart.docs} ↗</a>
   </section>
 
   <section class="proof section section-space" id="proof">

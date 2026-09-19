@@ -8,7 +8,6 @@ const rootDir = path.resolve(siteDir, "../..");
 const sourceDir = path.join(rootDir, "docs", "images");
 const realDir = path.join(siteDir, "../public/assets/real");
 const generatedDir = path.join(siteDir, "../public/assets/generated");
-const iconDir = path.join(siteDir, "../public/assets/icons");
 
 // Only the assets the page actually renders, resized to roughly 2x display size.
 const rasterTargets = [
@@ -43,6 +42,16 @@ for (const { file, to, width, format } of rasterTargets) {
   report(source, target);
 }
 
+// Standalone product mark cropped from the project logo. Keep this separate from
+// the WeChat channel glyph: the bridge, not either channel, is the product brand.
+const brandMark = await sharp(path.join(sourceDir, "logo.png"))
+  .extract({ left: 0, top: 0, width: 820, height: 425 })
+  .trim({ background: { r: 255, g: 255, b: 255, alpha: 0 } })
+  .resize({ width: 360, withoutEnlargement: true })
+  .png({ compressionLevel: 9 })
+  .toBuffer();
+await fs.promises.writeFile(path.join(realDir, "brand-mark.png"), brandMark);
+
 // Re-encode the demo animation; fall back to a plain copy if sharp cannot process it.
 const animationSource = path.join(sourceDir, "animation.webp");
 const animationTarget = path.join(realDir, "animation.webp");
@@ -54,9 +63,12 @@ try {
   fs.copyFileSync(animationSource, animationTarget);
 }
 
-// Favicon rasters from the brand mark.
+// Favicon rasters from the actual bridge mark rather than a channel logo.
 for (const { size, name } of [{ size: 32, name: "favicon-32.png" }, { size: 180, name: "apple-touch-icon.png" }, { size: 512, name: "favicon-512.png" }]) {
-  await sharp(path.join(iconDir, "favicon.svg")).resize({ width: size, height: size }).png().toFile(path.join(generatedDir, name));
+  await sharp(brandMark)
+    .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(path.join(generatedDir, name));
 }
 
 // 1200x630 social card: brand background + wordmark + screenshot, graphics only

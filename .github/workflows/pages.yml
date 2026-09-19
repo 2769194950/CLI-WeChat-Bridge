@@ -14,7 +14,7 @@ on:
       - "docs/images/image-12.png"
       - "docs/images/image-13.png"
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 3 */3 * *"
   workflow_dispatch:
 
 permissions:

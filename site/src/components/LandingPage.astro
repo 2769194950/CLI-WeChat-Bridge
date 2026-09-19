@@ -34,7 +34,7 @@ const copy = isZh ? {
   local: "本地执行",
   native: "原生终端",
   channels: "双通道",
-  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", request: "任务 / 控制", response: "结果 / 审批 / 状态", phases: ["等待双向交互", "任务正在发送", "正在路由到本地 CLI", "本地 CLI 正在执行", "结果、审批与状态正在回流"] },
+  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", summary: "输入・审批・状态・结果", phases: ["等待双向交互", "任务正在发送", "正在路由到本地 CLI", "本地 CLI 正在执行", "结果、审批与状态正在回流"] },
   metrics: { stars: "GitHub Stars", version: "当前版本", downloads: "npm 总下载量" },
   capability: {
     eyebrow: "不只转发最终回复",
@@ -110,7 +110,7 @@ const copy = isZh ? {
   local: "Local execution",
   native: "Native terminals",
   channels: "Two channels",
-  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", request: "tasks / control", response: "results / approvals / status", phases: ["Ready for two-way interaction", "Sending task", "Routing to the local CLI", "Local CLI is executing", "Results, approvals, and status are returning"] },
+  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", summary: "Input · approval · status · results", phases: ["Ready for two-way interaction", "Sending task", "Routing to the local CLI", "Local CLI is executing", "Results, approvals, and status are returning"] },
   metrics: { stars: "GitHub Stars", version: "Current version", downloads: "Total npm downloads" },
   capability: {
     eyebrow: "Beyond final-answer forwarding",
@@ -172,7 +172,8 @@ const copy = isZh ? {
 };
 
 const cliNodes = [
-  ["codex", "Codex"], ["anthropic", "Claude Code"], ["opencode", "OpenCode"], ["pi", "Pi"],
+  ["codex", "Codex", "WebSocket"], ["anthropic", "Claude Code", "PTY + Hook"],
+  ["opencode", "OpenCode", "HTTP + SSE"], ["pi", "Pi", "TUI extension"],
 ];
 const proofImages = [
   ["animation.webp", "1500", "924"], ["image-9.webp", "1200", "827"], ["image-10.webp", "1100", "1064"],
@@ -190,7 +191,6 @@ const proofImages = [
   <link rel="alternate" hreflang="zh-CN" href={siteRoot} />
   <link rel="alternate" hreflang="en" href={`${siteRoot}en/`} />
   <link rel="alternate" hreflang="x-default" href={siteRoot} />
-  <link rel="icon" href={`${base}assets/icons/favicon.svg`} type="image/svg+xml" sizes="any" />
   <link rel="icon" href={`${base}assets/generated/favicon-32.png`} type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href={`${base}assets/generated/apple-touch-icon.png`} />
   <title>{copy.title}</title>
@@ -211,7 +211,7 @@ const proofImages = [
 <body data-locale={locale} data-copy-success={copy.copied} data-base={base}>
 <header class="site-nav">
   <a class="nav-brand" href={isZh ? base : `${base}en/`} aria-label="CLI WeChat Bridge">
-    <img src={`${base}assets/icons/favicon.svg`} alt="" /><span>CLI WeChat Bridge</span>
+    <img src={`${base}assets/real/logo.png`} alt="CLI WeChat Bridge" />
   </a>
   <nav aria-label={isZh ? "主导航" : "Main navigation"}>
     {copy.nav.map((label, index) => <a href={`#${copy.navIds[index]}`}>{label}</a>)}
@@ -271,11 +271,11 @@ const proofImages = [
         <button class="stage-node channel-node" data-stage-node="channel" type="button"><span class="wecom-mark">W</span><b>WeCom</b><small>Smart Bot</small></button>
       </div>
       <button class="bridge-core" data-stage-node="bridge" type="button">
-        <span class="core-ring"></span><img src={`${base}assets/icons/favicon.svg`} alt="" /><b>{copy.heroDiagram.bridge}</b><small>{copy.heroDiagram.request}<br />↕<br />{copy.heroDiagram.response}</small>
+        <span class="core-ring"></span><img src={`${base}assets/real/brand-mark.png`} alt="" /><b>{copy.heroDiagram.bridge}</b><small>{copy.heroDiagram.summary}</small>
       </button>
       <div class="stage-column cli-nodes">
         <span class="column-label">{copy.heroDiagram.workspace}</span>
-        {cliNodes.map(([icon, name]) => <button class="stage-node cli-node" data-stage-node="cli" type="button"><img src={`${base}assets/icons/${icon}.svg`} alt="" /><b>{name}</b><small>native</small></button>)}
+        {cliNodes.map(([icon, name, protocol]) => <button class="stage-node cli-node" data-stage-node="cli" type="button"><img src={`${base}assets/icons/${icon}.svg`} alt="" /><b>{name}</b><small>{protocol}</small></button>)}
       </div>
     </div>
   </section>

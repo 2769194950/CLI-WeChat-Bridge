@@ -37,13 +37,7 @@ import {
 import { createRuntimeHost } from "../runtime/create-runtime-host.ts";
 import { toChannelInboundMessage } from "../channels/wechat/channel-message.ts";
 import { routeBridgeMessage } from "../core/bridge-message-router.ts";
-import {
-  clearTurn,
-  resolveConversationTarget,
-  rollbackTurn,
-  tryBeginTurn,
-  type TurnOwnershipState,
-} from "../core/conversation-routing.ts";
+import { TurnCoordinator } from "../core/turn-coordinator.ts";
 import { handleAdapterControl } from "./adapter-control.ts";
 import { forwardBridgeEvent } from "../core/bridge-event-forwarder.ts";
 import { isDirectModuleRun } from "../core/direct-run.ts";
@@ -566,10 +560,9 @@ async function main(): Promise<void> {
     recipientId: credentials.userId,
     metadata: { chatType: "direct" },
   };
-  const turnState: TurnOwnershipState<ActiveTask> = {
-    activeTask: null,
-    lastConversation: defaultWecomConversation,
-  };
+  const turns = new TurnCoordinator<ActiveTask>({
+    initialLastConversation: defaultWecomConversation,
+  });
   const deferredInboundMessages: DeferredInboundMessage[] = [];
   let drainingDeferredInboundMessages = false;
   let consecutivePollFailures = 0;
@@ -602,11 +595,7 @@ async function main(): Promise<void> {
     if (options.channelId === "wecom") {
       const target = targetOverride ??
         (senderId === credentials.userId
-          ? resolveConversationTarget({
-              active: turnState.activeConversation,
-              last: turnState.lastConversation,
-              fallback: defaultWecomConversation,
-            })
+          ? turns.resolveTarget(defaultWecomConversation)
           : {
               channelId: "wecom",
               accountId: wecomAccount?.botId,
@@ -718,11 +707,7 @@ async function main(): Promise<void> {
     targetOverride?: ChannelConversationRef,
   ) => {
     const queuedTarget = options.channelId === "wecom" && senderId === credentials.userId
-      ? targetOverride ?? resolveConversationTarget({
-          active: turnState.activeConversation,
-          last: turnState.lastConversation,
-          fallback: defaultWecomConversation,
-        })
+      ? targetOverride ?? turns.resolveTarget(defaultWecomConversation)
       : targetOverride;
     return queueWechatTextAction(async () => {
       const result = await sendWechatMessageNow(
@@ -801,11 +786,7 @@ async function main(): Promise<void> {
       text,
       "message",
       options.channelId === "wecom"
-        ? resolveConversationTarget({
-            active: turnState.activeConversation,
-            last: turnState.lastConversation,
-            fallback: defaultWecomConversation,
-          })
+        ? turns.resolveTarget(defaultWecomConversation)
         : undefined,
     );
   });
@@ -824,7 +805,7 @@ async function main(): Promise<void> {
         hasPendingConfirmation: Boolean(stateStore.getState().pendingConfirmation),
         hasPendingUserInput: Boolean(stateStore.getState().pendingUserInput),
         hasPendingApproval: Boolean(adapterState.pendingApproval),
-        hasActiveTask: Boolean(turnState.activeTask),
+        hasActiveTask: turns.hasActiveTask,
       })
     ) {
       return;
@@ -841,8 +822,7 @@ async function main(): Promise<void> {
         `draining_deferred_inbound_input: remaining=${deferredInboundMessages.length} text=${truncatePreview(nextDeferred.message.text)}`,
       );
       const nextTask = createActiveTask(nextDeferred.message);
-      const lease = tryBeginTurn(
-        turnState,
+      const lease = turns.beginTurn(
         nextTask,
         nextDeferred.channelMessage?.conversation,
       );
@@ -859,7 +839,7 @@ async function main(): Promise<void> {
           activeTask: nextTask,
         });
       } catch (error) {
-        rollbackTurn(turnState, lease);
+        turns.rollback(lease);
         throw error;
       }
     } catch (err) {
@@ -1043,10 +1023,10 @@ async function main(): Promise<void> {
       queueWechatMessage,
       trackWechatForwardTask,
       maybeDrainDeferredInboundMessages,
-      getActiveTask: () => turnState.activeTask,
+      getActiveTask: () => turns.activeTask,
       clearActiveTask: (expectedTask) => {
         if (expectedTask) {
-          clearTurn(turnState, expectedTask);
+          turns.complete(expectedTask);
         }
       },
       syncSharedSessionState: () => {
@@ -1057,11 +1037,7 @@ async function main(): Promise<void> {
       },
       requestShutdown,
       wecomTransport,
-      getWecomTarget: () => resolveConversationTarget({
-        active: turnState.activeConversation,
-        last: turnState.lastConversation,
-        fallback: defaultWecomConversation,
-      }),
+      getWecomTarget: () => turns.resolveTarget(defaultWecomConversation),
     });
 
     await adapter.start();
@@ -1080,7 +1056,7 @@ async function main(): Promise<void> {
           if (shutdownPromise || !ensureRuntimeOwnership()) {
             return;
           }
-          turnState.lastConversation = channelMessage.conversation;
+          turns.observeConversation(channelMessage.conversation);
           const queueInboundReply = (
             senderId: string,
             text: string,
@@ -1095,7 +1071,7 @@ async function main(): Promise<void> {
             await flushPendingWechatMessages();
           }
           const message = toLegacyInboundWechatMessage(channelMessage);
-          const taskAtMessageStart = turnState.activeTask;
+          const taskAtMessageStart = turns.activeTask;
           stateStore.touchActivity(message.createdAt);
           try {
             await handleInboundMessage({
@@ -1109,36 +1085,31 @@ async function main(): Promise<void> {
               outputBatcher,
               clearActiveTask: () => {
                 if (taskAtMessageStart) {
-                  clearTurn(turnState, taskAtMessageStart);
+                  turns.complete(taskAtMessageStart);
                 }
               },
               dispatchInboundText: async () => {
                 const nextActiveTask = createActiveTask(message);
-                const lease = tryBeginTurn(
-                  turnState,
-                  nextActiveTask,
-                  channelMessage.conversation,
-                );
-                if (!lease) {
-                  await queueInboundReply(
-                    message.senderId,
-                    `${options.adapter} is still working. Wait for the current reply or use /stop.`,
-                  );
-                  return null;
-                }
-                try {
-                  await dispatchInboundWechatText({
-                    message,
-                    options,
-                    stateStore,
-                    adapter,
-                    activeTask: nextActiveTask,
-                  });
-                  return nextActiveTask;
-                } catch (error) {
-                  rollbackTurn(turnState, lease);
-                  throw error;
-                }
+                const result = await turns.dispatch({
+                  task: nextActiveTask,
+                  conversation: channelMessage.conversation,
+                  onBusy: async () => {
+                    await queueInboundReply(
+                      message.senderId,
+                      `${options.adapter} is still working. Wait for the current reply or use /stop.`,
+                    );
+                  },
+                  forward: async () => {
+                    await dispatchInboundWechatText({
+                      message,
+                      options,
+                      stateStore,
+                      adapter,
+                      activeTask: nextActiveTask,
+                    });
+                  },
+                });
+                return result.status === "dispatched" ? nextActiveTask : null;
               },
               deferInboundMessage: async (nextMessage) => {
                 deferredInboundMessages.push({
@@ -1320,7 +1291,7 @@ async function main(): Promise<void> {
           break;
         }
 
-        const taskAtMessageStart = turnState.activeTask;
+        const taskAtMessageStart = turns.activeTask;
         stateStore.touchActivity(message.createdAt);
         try {
           await handleInboundMessage({
@@ -1333,32 +1304,30 @@ async function main(): Promise<void> {
             outputBatcher,
             clearActiveTask: () => {
               if (taskAtMessageStart) {
-                clearTurn(turnState, taskAtMessageStart);
+                turns.complete(taskAtMessageStart);
               }
             },
             dispatchInboundText: async () => {
               const nextActiveTask = createActiveTask(message);
-              const lease = tryBeginTurn(turnState, nextActiveTask);
-              if (!lease) {
-                await queueWechatMessage(
-                  message.senderId,
-                  `${options.adapter} is still working. Wait for the current reply or use /stop.`,
-                );
-                return null;
-              }
-              try {
-                await dispatchInboundWechatText({
-                  message,
-                  options,
-                  stateStore,
-                  adapter,
-                  activeTask: nextActiveTask,
-                });
-                return nextActiveTask;
-              } catch (error) {
-                rollbackTurn(turnState, lease);
-                throw error;
-              }
+              const result = await turns.dispatch({
+                task: nextActiveTask,
+                onBusy: async () => {
+                  await queueWechatMessage(
+                    message.senderId,
+                    `${options.adapter} is still working. Wait for the current reply or use /stop.`,
+                  );
+                },
+                forward: async () => {
+                  await dispatchInboundWechatText({
+                    message,
+                    options,
+                    stateStore,
+                    adapter,
+                    activeTask: nextActiveTask,
+                  });
+                },
+              });
+              return result.status === "dispatched" ? nextActiveTask : null;
             },
             deferInboundMessage: async (nextMessage) => {
               deferredInboundMessages.push({

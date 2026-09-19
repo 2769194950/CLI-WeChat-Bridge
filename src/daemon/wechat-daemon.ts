@@ -111,13 +111,8 @@ import {
 } from "../runtime/create-runtime-host.ts";
 import { toChannelInboundMessage } from "../channels/wechat/channel-message.ts";
 import { routeBridgeMessage } from "../core/bridge-message-router.ts";
-import {
-  clearTurn,
-  InboundConversationContext,
-  resolveConversationTarget,
-  rollbackTurn,
-  tryBeginTurn,
-} from "../core/conversation-routing.ts";
+import { InboundConversationContext } from "../core/conversation-routing.ts";
+import { TurnCoordinator } from "../core/turn-coordinator.ts";
 import { handleAdapterControl, invalidateModelSnapshot } from "../bridge/adapter-control.ts";
 import { forwardBridgeEvent } from "../core/bridge-event-forwarder.ts";
 import { isDirectModuleRun } from "../core/direct-run.ts";
@@ -180,12 +175,10 @@ type DaemonSlot = {
   pendingConfirmations: PendingApproval[];
   pendingUserInput: PendingUserInputRequest | null;
   resumeCoordinator: ResumeSessionCoordinator;
-  activeTask: ActiveTask | null;
+  turns: TurnCoordinator<ActiveTask>;
   lastOutputAt: number;
   lastFinalReplyAtMs: number;
   eventForwardChain: Promise<void>;
-  activeConversation?: ChannelConversationRef;
-  lastConversation?: ChannelConversationRef;
 };
 
 type WechatSendResult =
@@ -1527,7 +1520,7 @@ class WechatDaemon {
         adapter,
         runtime,
       }),
-      activeTask: null,
+      turns: new TurnCoordinator<ActiveTask>(),
       lastOutputAt: 0,
       lastFinalReplyAtMs: 0,
       eventForwardChain: Promise.resolve(),
@@ -1549,7 +1542,7 @@ class WechatDaemon {
     slot.outputBatcher.clear();
     slot.pendingConfirmations = [];
     slot.pendingUserInput = null;
-    clearTurn(slot);
+    slot.turns.complete();
 
     if (slot.adapter === "codex" || slot.adapter === "claude") {
       await slot.runtime.reset();
@@ -1616,7 +1609,7 @@ class WechatDaemon {
     const eventTarget = this.channelId === "wecom"
       ? this.resolveSlotOutputTarget(slot)
       : this.fallbackConversation;
-    const eventTask = slot.activeTask;
+    const eventTask = slot.turns.activeTask;
     if (slot.pendingConfirmations.length > 0 && !adapterState.pendingApproval) {
       slot.pendingConfirmations = [];
     }
@@ -1722,7 +1715,7 @@ class WechatDaemon {
           slot.pendingConfirmations = [];
           slot.pendingUserInput = null;
           if (eventTask) {
-            clearTurn(slot, eventTask);
+            slot.turns.complete(eventTask);
           }
         }));
       },
@@ -1731,7 +1724,7 @@ class WechatDaemon {
           slot.pendingConfirmations = [];
           slot.pendingUserInput = null;
           if (eventTask) {
-            clearTurn(slot, eventTask);
+            slot.turns.complete(eventTask);
           }
           await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, formatTaskFailedMessage(slot.adapter, next.message)), "task_failed", eventTarget);
         }));
@@ -1742,7 +1735,7 @@ class WechatDaemon {
         slot.pendingConfirmations = [];
         slot.pendingUserInput = null;
         if (eventTask) {
-          clearTurn(slot, eventTask);
+          slot.turns.complete(eventTask);
         }
         this.disposeDeadSlot(slot);
         this.trackWechatForwardTask(slot.outputBatcher.flushNow().then(async () => {
@@ -1760,11 +1753,7 @@ class WechatDaemon {
   }
 
   private resolveSlotOutputTarget(slot: DaemonSlot): ChannelConversationRef {
-    return resolveConversationTarget({
-      active: slot.activeConversation,
-      last: slot.lastConversation,
-      fallback: this.fallbackConversation,
-    });
+    return slot.turns.resolveTarget(this.fallbackConversation);
   }
 
   private bindCurrentWecomConversation(slot: DaemonSlot | null): void {
@@ -1772,7 +1761,7 @@ class WechatDaemon {
     if (this.channelId !== "wecom" || !slot || !conversation) {
       return;
     }
-    slot.lastConversation = conversation;
+    slot.turns.observeConversation(conversation);
   }
 
   private async handleInboundMessage(message: InboundWechatMessage): Promise<void> {
@@ -1872,7 +1861,7 @@ class WechatDaemon {
       currentSlot: DaemonSlot,
       command: ReturnType<typeof parseWechatControlCommand>,
     ): Promise<void> => {
-      const previousTask = currentSlot.activeTask;
+      const previousTask = currentSlot.turns.activeTask;
       await routeBridgeMessage({
         message: toChannelInboundMessage(message),
         authorized: true,
@@ -1925,12 +1914,11 @@ class WechatDaemon {
       if (
         this.channelId === "wecom" &&
         this.inboundConversationContext.get() &&
-        currentSlot.activeTask &&
-        currentSlot.activeTask !== previousTask
+        currentSlot.turns.activeTask &&
+        currentSlot.turns.activeTask !== previousTask
       ) {
         const conversation = this.inboundConversationContext.get()!;
-        currentSlot.activeConversation = conversation;
-        currentSlot.lastConversation = conversation;
+        currentSlot.turns.bindConversation(conversation);
       }
     };
 
@@ -2038,10 +2026,10 @@ class WechatDaemon {
           if (command.target) {
             await resumeSlot.outputBatcher.flushNow();
           }
-          const taskBeforeResume = resumeSlot.activeTask;
+          const taskBeforeResume = resumeSlot.turns.activeTask;
           const result = await resumeSlot.resumeCoordinator.execute(command.target);
           if (result.kind === "resumed" && taskBeforeResume) {
-            clearTurn(resumeSlot, taskBeforeResume);
+            resumeSlot.turns.complete(taskBeforeResume);
           }
           await this.queueWechatMessage(
             message.senderId,
@@ -2135,10 +2123,10 @@ class WechatDaemon {
     }
     const preview = slot.pendingConfirmations[0]?.commandPreview ?? "";
     slot.pendingConfirmations = [];
-    slot.activeTask = {
+    slot.turns.setActiveTask({
       startedAt: Date.now(),
       inputPreview: preview,
-    };
+    });
     appendDaemonLog(
       `approval_confirmed: adapter=${slot.adapter} count=${count} command=${truncatePreview(preview)}`,
     );
@@ -2235,10 +2223,10 @@ class WechatDaemon {
     }
 
     slot.pendingUserInput = null;
-    slot.activeTask = {
+    slot.turns.setActiveTask({
       startedAt: Date.now(),
       inputPreview: parsed.preview,
-    };
+    });
     appendDaemonLog(
       `user_input_answered: adapter=${slot.adapter} preview=${parsed.preview}`,
     );
@@ -2295,31 +2283,29 @@ class WechatDaemon {
     const inboundConversation = this.channelId === "wecom"
       ? this.inboundConversationContext.get()
       : undefined;
-    const lease = tryBeginTurn(slot, nextTask, inboundConversation);
-    if (!lease) {
-      await this.queueWechatMessage(
-        message.senderId,
-        prefixDaemonAdapterMessage(
-          slot.adapter,
-          `${slot.adapter} is still working. Wait for the current reply or use /stop.`,
-        ),
-      );
-      return;
-    }
-
-    appendDaemonLog(
-      `forwarded_input: adapter=${slot.adapter} text=${truncatePreview(preview)}`,
-    );
-    try {
-      await slot.runtime.sendInput(
-        this.channelId === "wecom"
-          ? buildWecomInboundPrompt(message.text, message.attachments)
-          : buildWechatInboundPrompt(message.text, message.attachments),
-      );
-    } catch (error) {
-      rollbackTurn(slot, lease);
-      throw error;
-    }
+    await slot.turns.dispatch({
+      task: nextTask,
+      conversation: inboundConversation,
+      onBusy: async () => {
+        await this.queueWechatMessage(
+          message.senderId,
+          prefixDaemonAdapterMessage(
+            slot.adapter,
+            `${slot.adapter} is still working. Wait for the current reply or use /stop.`,
+          ),
+        );
+      },
+      forward: async () => {
+        appendDaemonLog(
+          `forwarded_input: adapter=${slot.adapter} text=${truncatePreview(preview)}`,
+        );
+        await slot.runtime.sendInput(
+          this.channelId === "wecom"
+            ? buildWecomInboundPrompt(message.text, message.attachments)
+            : buildWechatInboundPrompt(message.text, message.attachments),
+        );
+      },
+    });
   }
 
   private queueWechatTextAction<T>(action: () => Promise<T>): Promise<T> {

@@ -17,9 +17,10 @@
 - standalone 与 daemon 已复用公共 turn lease、回滚和条件清理语义；
 - 增加每周及手动触发的 CLI compatibility workflow；
 - compatibility smoke 会验证 Codex schema、Claude capability、OpenCode server health 和 Pi extension capability；
-- Pi `/model` 已通过原生 extension API 的 `modelRegistry` 与 `pi.setModel()` 接通。
+- Pi `/model` 已通过原生 extension API 的 `modelRegistry` 与 `pi.setModel()` 接通；
+- `src/core/turn-coordinator.ts` 已将 message gating、turn lease、dispatch 事务、回滚与条件清理、conversation 绑定与 target 解析收敛为 standalone 与 daemon 共用的 `TurnCoordinator` 类，并由 `test/core/turn-coordinator.test.ts` 覆盖。
 
-尚未实施：把更多 message gating 移入独立 Turn Coordinator 类，以及把 compatibility workflow 设为 required check。
+尚未实施：把 compatibility workflow 设为 required check。
 
 ## 1. 目标
 
@@ -191,9 +192,9 @@ replyToInbound(text, context)
 
 ## 7. Phase 3：抽取公共 Turn Coordinator
 
-仅在 Phase 0–2 行为测试全部稳定后进行。
+仅在 Phase 0–2 行为测试全部稳定后进行。已实施：`src/core/turn-coordinator.ts` 提供 `TurnCoordinator<TTask>`，standalone bridge（WeChat/WeCom 双通道、在线 dispatch、deferred drain）与 daemon（每 adapter slot 一个 coordinator、审批/结构化输入接管、resume 清理）均已接入。
 
-建议新增靠近 `src/core` 或 `src/bridge` 的 coordinator，负责：
+coordinator 负责：
 
 - `routeBridgeMessage` gating；
 - active remote turn lease；
@@ -328,4 +329,5 @@ npm run build
 - [x] busy 输入策略为拒绝而不是通用排队；
 - [x] 本地 turn 的 fallback target 仍使用 slot 最近 conversation；
 - [x] compatibility workflow 初期不设 required；
-- [x] 从 Phase 0 回归测试开始，再抽取公共 turn ownership helper。
+- [x] 从 Phase 0 回归测试开始，再抽取公共 turn ownership helper；
+- [x] Phase 3 的 TurnCoordinator 抽取在四形态行为测试稳定后进行，gating 语义逐点等价迁移。

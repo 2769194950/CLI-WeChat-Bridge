@@ -202,7 +202,7 @@ Pi 原生 TUI + extension TCP IPC 的方向仍然合理，且符合“复用可�
 ### 后续能力增强
 
 1. Pi extension `/model` 与共享 turn ownership helper 已在本轮落地。
-2. 后续可继续把 message gating 抽取为 standalone/daemon 共用的完整 Turn Coordinator。
+2. standalone/daemon 共用的完整 Turn Coordinator（`src/core/turn-coordinator.ts`）已在本轮落地，message gating、dispatch 事务与 conversation ownership 不再在两处重复实现。
 
 ## 7. 非目标
 

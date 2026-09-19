@@ -34,7 +34,7 @@ const copy = isZh ? {
   local: "本地执行",
   native: "原生终端",
   channels: "双通道",
-  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", summary: "输入・审批・状态・结果", phases: ["等待双向交互", "任务正在发送", "正在路由到本地 CLI", "本地 CLI 正在执行", "结果、审批与状态正在回流"] },
+  heroDiagram: { channel: "远程通道", bridge: "CLI Bridge", workspace: "本地工作区", summary: "输入・审批・状态・结果", phases: ["任务正在发送", "正在路由到本地 CLI", "本地 CLI 正在执行", "结果、审批与状态正在回流"] },
   metrics: { stars: "GitHub Stars", version: "当前版本", downloads: "npm 总下载量" },
   capability: {
     eyebrow: "不只转发最终回复",
@@ -110,7 +110,7 @@ const copy = isZh ? {
   local: "Local execution",
   native: "Native terminals",
   channels: "Two channels",
-  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", summary: "Input · approval · status · results", phases: ["Ready for two-way interaction", "Sending task", "Routing to the local CLI", "Local CLI is executing", "Results, approvals, and status are returning"] },
+  heroDiagram: { channel: "Remote channels", bridge: "CLI Bridge", workspace: "Local workspace", summary: "Input · approval · status · results", phases: ["Sending task", "Routing to the local CLI", "Local CLI is executing", "Results, approvals, and status are returning"] },
   metrics: { stars: "GitHub Stars", version: "Current version", downloads: "Total npm downloads" },
   capability: {
     eyebrow: "Beyond final-answer forwarding",
@@ -241,9 +241,8 @@ const proofImages = [
 
     <div class="bridge-stage" data-bridge-stage data-active="bridge" aria-label={isZh ? "微信、CLI Bridge 与本地 CLI 的双向架构示意" : "Two-way architecture between channels, CLI Bridge, and local CLIs"}>
       <div class="stage-glow"></div>
-      <p class="stage-hint">{isZh ? "滚动推进 · 移动指针探索" : "Scroll to advance · Move to explore"}</p>
       <div class="stage-status" aria-live="polite">
-        <i></i>{copy.heroDiagram.phases.map((phase, index) => <span data-phase={index}>{phase}</span>)}
+        <i></i>{copy.heroDiagram.phases.map((phase, index) => <span data-phase={index + 1}>{phase}</span>)}
       </div>
       <svg class="stage-lines" viewBox="0 0 720 480" aria-hidden="true">
         <defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>

@@ -134,7 +134,7 @@ function updateStory(progress) {
   setPathProgress(storyPaths.returnCli, returnCli, true);
   setPathProgress(storyPaths.returnChannel, returnChannel, true);
   stage.classList.toggle("story-execute", execution > 0 && returnCli < 1);
-  stage.dataset.storyPhase = progress < .04 ? "0" : progress < .27 ? "1" : progress < .52 ? "2" : progress < .72 ? "3" : "4";
+  stage.dataset.storyPhase = progress < .04 || progress >= .995 ? "0" : progress < .27 ? "1" : progress < .52 ? "2" : progress < .72 ? "3" : "4";
 }
 
 if (stage) {
@@ -185,16 +185,10 @@ revealUnits.forEach((element, index) => {
 function updateScrollMotion() {
   const viewportHeight = innerHeight;
   if (heroScroll && hero && stage) {
-    let progress;
-    if (innerWidth > 1050) {
-      const rect = heroScroll.getBoundingClientRect();
-      const travel = Math.max(1, heroScroll.offsetHeight - hero.offsetHeight);
-      progress = clamp01(-rect.top / travel);
-    } else {
-      const stickyTop = innerWidth <= 760 ? 76 : 80;
-      const storyStart = heroScroll.offsetTop + hero.offsetTop + stage.offsetTop - stickyTop;
-      progress = clamp01((scrollY - storyStart) / (viewportHeight * .42));
-    }
+    const heroTop = heroScroll.getBoundingClientRect().top + scrollY;
+    const stageTop = stage.getBoundingClientRect().top + scrollY;
+    const storyStart = innerWidth > 1050 ? heroTop : stageTop - viewportHeight * .75;
+    const progress = clamp01((scrollY - storyStart) / (viewportHeight * .2));
     updateStory(progress);
     stage.style.setProperty("--story", progress.toFixed(4));
   }
@@ -251,8 +245,8 @@ if (builder) {
         word.textContent = adapter;
         word.classList.remove("flip-out");
         word.classList.add("flip-in");
-        setTimeout(() => word.classList.remove("flip-in"), 260);
-      }, 170);
+        setTimeout(() => word.classList.remove("flip-in"), 380);
+      }, 200);
     } else word.textContent = adapter;
   }
   function restartRotation() {
@@ -261,7 +255,7 @@ if (builder) {
     rotation = setInterval(() => {
       adapterIndex = (adapterIndex + 1) % words.length;
       updateBuilder(builder.dataset.channel, words[adapterIndex], true);
-    }, 2400);
+    }, 1200);
   }
   builder.querySelectorAll("[data-channel-choice]").forEach((button) => button.addEventListener("click", () => {
     updateBuilder(button.dataset.channelChoice, builder.dataset.adapter, false);
@@ -275,8 +269,6 @@ if (builder) {
     const command = button.dataset.copyDynamic === "setup" ? `${builder.dataset.channel}-setup` : `${builder.dataset.channel}-${builder.dataset.adapter}`;
     try { await copyText(command); showCopied(button); } catch {}
   }));
-  builder.addEventListener("pointerenter", () => clearInterval(rotation));
-  builder.addEventListener("pointerleave", restartRotation);
   restartRotation();
 }
 

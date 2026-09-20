@@ -14,6 +14,7 @@ import {
   parseDaemonCliArgs,
   parseDaemonSwitchCommand,
   parseDaemonSwitchDirective,
+  prefixRoutedTaskMessage,
   resolveDaemonSessionStartMode,
   shouldRestartDeadCodexVisibleRuntime,
   waitForCodexVisibleThread,
@@ -56,6 +57,26 @@ function buildDaemonEndpoint(overrides: Partial<DaemonEndpoint> = {}): DaemonEnd
 }
 
 describe("wechat-daemon helpers", () => {
+  test("prefixRoutedTaskMessage keeps routed output tied to its short session", () => {
+    expect(
+      prefixRoutedTaskMessage(
+        {
+          startedAt: Date.now(),
+          inputPreview: "inspect",
+          sessionShortId: "A1B2",
+          sessionTitle: "项目A",
+        },
+        "完成",
+      ),
+    ).toBe("[A1B2 项目A]\n完成");
+    expect(
+      prefixRoutedTaskMessage(
+        { startedAt: Date.now(), inputPreview: "inspect" },
+        "legacy",
+      ),
+    ).toBe("legacy");
+  });
+
   test("parseDaemonSwitchCommand recognizes terminal switch commands", () => {
     expect(parseDaemonSwitchCommand("/codex")).toBe("codex");
     expect(parseDaemonSwitchCommand("/claude")).toBe("claude");

@@ -267,7 +267,7 @@ function appendDaemonLog(message: string): void {
   );
 }
 
-function prefixRoutedTaskMessage(task: ActiveTask | null, text: string): string {
+export function prefixRoutedTaskMessage(task: ActiveTask | null, text: string): string {
   if (!task?.sessionShortId) return text;
   const title = task.sessionTitle?.trim();
   return `[${task.sessionShortId}${title ? ` ${title}` : ""}]\n${text}`;

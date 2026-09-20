@@ -84,6 +84,7 @@ class FakeBridgeRuntime implements BridgeAdapter {
   readonly adapter: DaemonAdapterKind;
   state: BridgeAdapterState;
   readonly inputs: string[] = [];
+  readonly resumedSessions: string[] = [];
   readonly approvals: Array<"confirm" | "deny"> = [];
   readonly userInput: Record<string, string[]>[] = [];
   private holdInput = false;
@@ -176,8 +177,9 @@ class FakeBridgeRuntime implements BridgeAdapter {
     return [];
   }
 
-  async resumeSession(): Promise<void> {
-    // Not exercised by these tests.
+  async resumeSession(sessionId: string): Promise<void> {
+    this.resumedSessions.push(sessionId);
+    this.state = { ...this.state, activeRuntimeSessionId: sessionId };
   }
 
   async interrupt(): Promise<boolean> {
@@ -295,6 +297,9 @@ function forwardInputRequest(params: {
   adapter?: DaemonAdapterKind;
   text: string;
   conversationId: string;
+  requestId?: string;
+  runtimeSessionId?: string;
+  metadata?: Record<string, string>;
 }): Extract<DaemonRequest, { command: "forward_input" }> {
   return {
     command: "forward_input",
@@ -303,12 +308,24 @@ function forwardInputRequest(params: {
     conversationId: params.conversationId,
     recipientId: OPERATOR_ID,
     text: params.text,
+    ...(params.requestId ? { requestId: params.requestId } : {}),
+    ...(params.runtimeSessionId
+      ? { runtimeSessionId: params.runtimeSessionId }
+      : {}),
+    ...(params.metadata ? { metadata: params.metadata } : {}),
   };
 }
 
 async function forwardInput(
   daemon: WechatDaemon,
-  params: { adapter?: DaemonAdapterKind; text: string; conversationId: string },
+  params: {
+    adapter?: DaemonAdapterKind;
+    text: string;
+    conversationId: string;
+    requestId?: string;
+    runtimeSessionId?: string;
+    metadata?: Record<string, string>;
+  },
 ): Promise<DaemonForwardInputResult> {
   return (await daemon.handleDaemonRequest(
     forwardInputRequest(params),
@@ -472,6 +489,42 @@ describe("wechat-daemon handlers: forward_input dispatch", () => {
       hasActiveTask: true,
       activeConversationId: "conv-1",
       lastConversationId: "conv-1",
+    });
+  });
+
+  test("resumes the requested Claude session and deduplicates request_id", async () => {
+    const env = new FakeDaemonEnvironment();
+    const daemon = env.buildDaemon("wecom");
+    const request = {
+      adapter: "claude" as const,
+      text: "continue the selected session",
+      conversationId: "conv-targeted",
+      requestId: "req-targeted-001",
+      runtimeSessionId: "claude-session-b",
+      metadata: {
+        sessionShortId: "B7F2A1",
+        sessionTitle: "targeted handler test",
+      },
+    };
+
+    const first = await forwardInput(daemon, request);
+    const duplicate = await forwardInput(daemon, request);
+    const runtime = env.runtime("claude");
+
+    expect(first).toEqual({
+      forwarded: true,
+      requestId: "req-targeted-001",
+      activeRuntimeSessionId: "claude-session-b",
+      adapter: "claude",
+      conversationId: "conv-targeted",
+    });
+    expect(duplicate).toEqual(first);
+    expect(runtime.resumedSessions).toEqual(["claude-session-b"]);
+    expect(runtime.inputs).toEqual(["continue the selected session"]);
+    expect(daemon.getSlotState("claude")).toMatchObject({
+      active: true,
+      hasActiveTask: true,
+      activeConversationId: "conv-targeted",
     });
   });
 

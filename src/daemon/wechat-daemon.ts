@@ -121,7 +121,10 @@ import {
 } from "../core/bridge-defer.ts";
 import { InboundConversationContext } from "../core/conversation-routing.ts";
 import { TurnCoordinator, type TurnDispatchResult } from "../core/turn-coordinator.ts";
-import { routeInboundThroughXiatong } from "../core/xiantong-router-hook.ts";
+import {
+  postBridgeEventToXiatong,
+  routeInboundThroughXiatong,
+} from "../core/xiantong-router-hook.ts";
 import { handleAdapterControl, invalidateModelSnapshot } from "../bridge/adapter-control.ts";
 import { forwardBridgeEvent } from "../core/bridge-event-forwarder.ts";
 import { isDirectModuleRun } from "../core/direct-run.ts";
@@ -181,6 +184,10 @@ type DaemonCliOptions = {
 type ActiveTask = {
   startedAt: number;
   inputPreview: string;
+  requestId?: string;
+  sessionShortId?: string;
+  sessionTitle?: string;
+  runtimeSessionId?: string;
 };
 
 type DaemonSlot = {
@@ -258,6 +265,12 @@ function appendDaemonLog(message: string): void {
     BRIDGE_LOG_FILE,
     `[${new Date().toISOString()}] daemon: ${message}\n`,
   );
+}
+
+function prefixRoutedTaskMessage(task: ActiveTask | null, text: string): string {
+  if (!task?.sessionShortId) return text;
+  const title = task.sessionTitle?.trim();
+  return `[${task.sessionShortId}${title ? ` ${title}` : ""}]\n${text}`;
 }
 
 function computePollRetryDelayMs(consecutiveFailures: number): number {
@@ -1580,7 +1593,12 @@ export class WechatDaemon {
         }
         const routed = await this.inboundConversationContext.run(
           conversation,
-          () => this.routeDaemonInput(slot, inboundMessage, conversation),
+          () => this.routeDaemonInput(slot, inboundMessage, conversation, {
+            requestId: request.requestId,
+            sessionShortId: request.metadata?.sessionShortId,
+            sessionTitle: request.metadata?.sessionTitle,
+            runtimeSessionId: activeRuntimeSessionId,
+          }),
         );
         return { routed, activeRuntimeSessionId };
       });
@@ -1626,6 +1644,7 @@ export class WechatDaemon {
     slot: DaemonSlot,
     inboundMessage: InboundWechatMessage,
     conversation: ChannelConversationRef,
+    identity: Partial<ActiveTask> = {},
   ): Promise<{
     kind: "dispatched" | "deferred" | "handled";
     reason?: DaemonForwardInputResult["reason"];
@@ -1710,7 +1729,12 @@ export class WechatDaemon {
         );
       },
       dispatch: async () => {
-        await this.dispatchInboundWechatText(inboundMessage, slot, conversation);
+        await this.dispatchInboundWechatText(
+          inboundMessage,
+          slot,
+          conversation,
+          identity,
+        );
       },
     });
     if (routeResult.kind === "dispatched") {
@@ -2017,9 +2041,13 @@ export class WechatDaemon {
       runtime,
       controller,
       outputBatcher: new OutputBatcher(async (text) => {
+        const activeTask = this.slots.get(adapter)?.turns.activeTask ?? null;
         await this.queueWechatMessage(
           this.authorizedUserId,
-          prefixDaemonAdapterMessage(adapter, text),
+          prefixDaemonAdapterMessage(
+            adapter,
+            prefixRoutedTaskMessage(activeTask, text),
+          ),
           "message",
           this.resolveSlotOutputTarget(slot),
         );
@@ -2130,9 +2158,39 @@ export class WechatDaemon {
     if (slot.pendingUserInput && !adapterState.pendingUserInput) {
       slot.pendingUserInput = null;
     }
+    const routedTask = eventTask;
 
     slot.eventForwardChain = slot.eventForwardChain
-      .then(() => forwardBridgeEvent(event, {
+      .then(async () => {
+        if (routedTask?.requestId) {
+          try {
+            await postBridgeEventToXiatong({
+              requestId: routedTask.requestId,
+              adapter: slot.adapter,
+              cwd: this.cwd,
+              runtimeSessionId:
+                routedTask.runtimeSessionId ??
+                adapterState.activeRuntimeSessionId ??
+                adapterState.sharedSessionId,
+              event: {
+                ...event,
+                kind: event.type,
+                text:
+                  "text" in event
+                    ? event.text
+                    : "message" in event
+                      ? event.message
+                      : "",
+              },
+            });
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            appendDaemonLog(
+              `xiantong_bridge_event_failed: adapter=${slot.adapter} request=${routedTask.requestId} error=${truncatePreview(detail, 200)}`,
+            );
+          }
+        }
+        await forwardBridgeEvent(event, {
       stdout: (next) => {
         slot.lastOutputAt = Date.now();
         if (shouldForwardBridgeEventToWechat(slot.adapter, next.type)) {
@@ -2152,7 +2210,7 @@ export class WechatDaemon {
           await channelPort.send({
             target: eventTarget,
             kind: "final_reply",
-            text: next.text,
+            text: prefixRoutedTaskMessage(routedTask, next.text),
             adapter: slot.adapter,
           });
         }));
@@ -2168,7 +2226,7 @@ export class WechatDaemon {
         appendDaemonLog(`${slot.adapter}_${next.level}_notice: ${truncatePreview(next.text)}`);
         if (shouldForwardBridgeEventToWechat(slot.adapter, next.type, { text: next.text })) {
           this.trackWechatForwardTask(slot.outputBatcher.flushNow().then(async () => {
-            await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, next.text), "notice", eventTarget);
+            await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, prefixRoutedTaskMessage(routedTask, next.text)), "notice", eventTarget);
           }));
         }
       },
@@ -2177,7 +2235,7 @@ export class WechatDaemon {
           const pending = toPendingApproval(next);
           slot.pendingConfirmations.push(pending);
           appendDaemonLog(`approval_required: adapter=${slot.adapter} source=${pending.source} command=${truncatePreview(pending.commandPreview)}`);
-          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, formatApprovalMessage(pending, adapterState)), "approval_required", eventTarget);
+          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, prefixRoutedTaskMessage(routedTask, formatApprovalMessage(pending, adapterState))), "approval_required", eventTarget);
         }));
       },
       userInputRequired: (next) => {
@@ -2185,7 +2243,7 @@ export class WechatDaemon {
         slot.pendingUserInput = pending;
         appendDaemonLog(`user_input_required: adapter=${slot.adapter} questions=${pending.questions.length}`);
         this.trackWechatForwardTask(slot.outputBatcher.flushNow().then(async () => {
-          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, formatUserInputRequestMessage(pending, adapterState)), "user_input_required", eventTarget);
+          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, prefixRoutedTaskMessage(routedTask, formatUserInputRequestMessage(pending, adapterState))), "user_input_required", eventTarget);
         }));
       },
       mirroredUserInput: (next) => {
@@ -2242,7 +2300,7 @@ export class WechatDaemon {
             slot.turns.complete(eventTask);
           }
           void this.maybeDrainDeferredInputs(slot);
-          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, formatTaskFailedMessage(slot.adapter, next.message)), "task_failed", eventTarget);
+          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, prefixRoutedTaskMessage(routedTask, formatTaskFailedMessage(slot.adapter, next.message))), "task_failed", eventTarget);
         }));
       },
       fatalError: (next) => {
@@ -2256,13 +2314,14 @@ export class WechatDaemon {
         void this.maybeDrainDeferredInputs(slot);
         this.disposeDeadSlot(slot);
         this.trackWechatForwardTask(slot.outputBatcher.flushNow().then(async () => {
-          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, formatUserFacingBridgeFatalError(next.message)), "fatal_error", eventTarget);
+          await this.queueWechatMessage(this.authorizedUserId, prefixDaemonAdapterMessage(slot.adapter, prefixRoutedTaskMessage(routedTask, formatUserFacingBridgeFatalError(next.message))), "fatal_error", eventTarget);
         }));
       },
       shutdownRequested: (next) => {
         appendDaemonLog(`slot_shutdown_requested: adapter=${slot.adapter} reason=${next.reason}`);
       },
-      }))
+        });
+      })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         appendDaemonLog(`event_forward_failed: adapter=${slot.adapter} message=${message}`);
@@ -2837,11 +2896,13 @@ export class WechatDaemon {
     message: InboundWechatMessage,
     slot: DaemonSlot,
     conversationOverride?: ChannelConversationRef,
+    identity: Partial<ActiveTask> = {},
   ): Promise<TurnDispatchResult<ActiveTask>> {
     const preview = formatInboundMessagePreview(message);
     const nextTask = {
       startedAt: Date.now(),
       inputPreview: truncatePreview(preview, 180),
+      ...identity,
     };
     const inboundConversation = this.channelId === "wecom"
       ? conversationOverride ?? this.inboundConversationContext.get()

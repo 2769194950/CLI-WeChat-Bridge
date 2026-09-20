@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   buildRoutePayload,
+  postBridgeEventToXiatong,
   routeInboundThroughXiatong,
 } from "../../src/core/xiantong-router-hook.ts";
 import type { ChannelInboundMessage } from "../../src/core/channel-types.ts";
@@ -129,6 +130,35 @@ describe("XiaTong inbound Router hook", () => {
       kind: "handled",
       reply: "[遐通]\n状态：done",
       reason: "command",
+    });
+  });
+
+  test("posts Bridge events through the authenticated Router contract", async () => {
+    const endpointPath = createEndpoint();
+    let postedPayload: Record<string, unknown> | undefined;
+    const result = await postBridgeEventToXiatong(
+      {
+        requestId: "request-1",
+        adapter: "claude",
+        runtimeSessionId: "runtime-a",
+        event: { kind: "task_complete", text: "done" },
+      },
+      {
+        endpointPath,
+        request: async (_endpoint, payload) => {
+          postedPayload = payload;
+          return { ok: true };
+        },
+      },
+    );
+
+    expect(result).toBe(true);
+    expect(postedPayload).toEqual({
+      type: "bridge_event",
+      requestId: "request-1",
+      adapter: "claude",
+      runtimeSessionId: "runtime-a",
+      event: { kind: "task_complete", text: "done" },
     });
   });
 

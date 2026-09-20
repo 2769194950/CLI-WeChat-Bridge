@@ -49,6 +49,25 @@ export type XiatongRouterHookOptions = {
   ) => Promise<RouterFrameResponse>;
 };
 
+export async function postBridgeEventToXiatong(
+  payload: Record<string, unknown>,
+  options: XiatongRouterHookOptions = {},
+): Promise<boolean> {
+  const endpointPath = options.endpointPath ?? process.env[ROUTER_ENDPOINT_ENV]?.trim();
+  if (!endpointPath) return false;
+  const endpoint = readRouterEndpoint(endpointPath);
+  const request = options.request ?? sendRouterRequest;
+  const frame = await request(
+    endpoint,
+    { type: "bridge_event", ...payload },
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  );
+  if (!frame.ok) {
+    throw new Error(frame.error ?? "bridge_event_rejected");
+  }
+  return true;
+}
+
 export async function routeInboundThroughXiatong(
   message: ChannelInboundMessage,
   options: XiatongRouterHookOptions = {},

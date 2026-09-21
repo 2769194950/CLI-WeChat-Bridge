@@ -88,19 +88,21 @@ export async function createRuntimeSession(
   adapter: DaemonAdapterKind,
   options: RuntimeSessionCreationOptions = {},
 ): Promise<RuntimeSessionCreationResult> {
-  if (adapter !== "claude") {
-    throw new Error("create_runtime_session currently supports Claude only.");
+  if (!runtime.createSession) {
+    throw new Error(
+      `${adapter} does not support creating runtime sessions.`,
+    );
   }
 
   const initialState = runtime.getState();
   if (initialState.status !== "idle") {
     throw new Error(
-      `Claude must be idle before creating a runtime session; current status is ${initialState.status}.`,
+      `${adapter} must be idle before creating a runtime session; current status is ${initialState.status}.`,
     );
   }
 
   const previousRuntimeSessionId = getRuntimeSessionId(initialState);
-  await runtime.reset();
+  await runtime.createSession();
 
   const timeoutMs = options.timeoutMs ?? 20_000;
   const pollIntervalMs = options.pollIntervalMs ?? 100;
@@ -119,6 +121,6 @@ export async function createRuntimeSession(
   }
 
   throw new Error(
-    `Claude did not publish a new runtime session id within ${timeoutMs}ms.`,
+    `${adapter} did not publish a new runtime session id within ${timeoutMs}ms.`,
   );
 }

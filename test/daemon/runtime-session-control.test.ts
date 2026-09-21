@@ -12,7 +12,7 @@ import {
 
 function fakeRuntime(
   initial: Partial<BridgeAdapterState>,
-  onReset: (state: BridgeAdapterState) => void,
+  onCreate: ((state: BridgeAdapterState) => void) | undefined,
 ): BridgeAdapter {
   const state: BridgeAdapterState = {
     kind: "claude",
@@ -28,7 +28,8 @@ function fakeRuntime(
     async listResumeSessions() { return []; },
     async resumeSession() {},
     async interrupt() { return false; },
-    async reset() { onReset(state); },
+    async createSession() { onCreate?.(state); },
+    async reset() {},
     async resolveApproval() { return false; },
     async resolveAllApprovals() { return 0; },
     async submitUserInput() { return false; },
@@ -38,7 +39,7 @@ function fakeRuntime(
 }
 
 describe("createRuntimeSession", () => {
-  test("waits for and returns a new Claude runtime session id", async () => {
+  test("waits for and returns a new runtime session id", async () => {
     const runtime = fakeRuntime(
       { sharedSessionId: "old-session" },
       (state) => {
@@ -62,12 +63,12 @@ describe("createRuntimeSession", () => {
   });
 
   test("rejects busy state and missing session id", async () => {
-    const busy = fakeRuntime({ status: "busy" }, () => undefined);
+    const busy = fakeRuntime({ status: "busy" }, undefined);
     await expect(createRuntimeSession(busy, "claude")).rejects.toThrow(
       "must be idle",
     );
 
-    const missing = fakeRuntime({}, () => undefined);
+    const missing = fakeRuntime({}, undefined);
     await expect(
       createRuntimeSession(missing, "claude", {
         timeoutMs: 5,
@@ -76,10 +77,28 @@ describe("createRuntimeSession", () => {
     ).rejects.toThrow("did not publish");
   });
 
-  test("rejects non-Claude adapters", async () => {
-    const runtime = fakeRuntime({}, () => undefined);
+  test("supports Codex runtimes with the same session contract", async () => {
+    const runtime = fakeRuntime(
+      { kind: "codex", sharedSessionId: "old-thread" },
+      (state) => {
+        state.sharedSessionId = "new-thread";
+        state.activeRuntimeSessionId = "new-thread";
+      },
+    );
+    await expect(
+      createRuntimeSession(runtime, "codex", { timeoutMs: 20, pollIntervalMs: 1 }),
+    ).resolves.toEqual({
+      adapter: "codex",
+      runtimeSessionId: "new-thread",
+      previousRuntimeSessionId: "old-thread",
+    });
+  });
+
+  test("rejects runtimes without the session creation contract", async () => {
+    const runtime = fakeRuntime({}, undefined);
+    runtime.createSession = undefined;
     await expect(createRuntimeSession(runtime, "codex")).rejects.toThrow(
-      "supports Claude only",
+      "does not support creating runtime sessions",
     );
   });
 });
@@ -89,7 +108,7 @@ describe("ensureTargetRuntimeSession", () => {
     let resumeCount = 0;
     const matching = fakeRuntime(
       { sharedSessionId: "session-a" },
-      () => undefined,
+      undefined,
     );
     matching.resumeSession = async () => { resumeCount += 1; };
     await expect(
@@ -99,7 +118,7 @@ describe("ensureTargetRuntimeSession", () => {
 
     const switching = fakeRuntime(
       { sharedSessionId: "session-a" },
-      () => undefined,
+      undefined,
     );
     switching.resumeSession = async (sessionId) => {
       switching.getState().sharedSessionId = sessionId;
@@ -111,14 +130,14 @@ describe("ensureTargetRuntimeSession", () => {
   });
 
   test("rejects busy and mismatched resume results", async () => {
-    const busy = fakeRuntime({ status: "busy" }, () => undefined);
+    const busy = fakeRuntime({ status: "busy" }, undefined);
     await expect(
       ensureTargetRuntimeSession(busy, "session-b"),
     ).rejects.toThrow("must be idle");
 
     const mismatch = fakeRuntime(
       { sharedSessionId: "session-a" },
-      () => undefined,
+      undefined,
     );
     await expect(
       ensureTargetRuntimeSession(mismatch, "session-b"),
